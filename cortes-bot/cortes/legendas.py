@@ -49,7 +49,7 @@ def gerar_ass(palavras: list[dict], inicio: float, fim: float, destino: Path, y:
     dentro = [p for p in palavras if p["e"] > inicio and p["s"] < fim]
     if not dentro:
         return None
-    linhas = []
+    eventos = []
     for g in _grupos(dentro):
         fim_grupo = g[-1]["e"]
         for i, p in enumerate(g):
@@ -57,7 +57,13 @@ def gerar_ass(palavras: list[dict], inicio: float, fim: float, destino: Path, y:
             partes = [(DESTAQUE if j == i else NORMAL) + x["w"].upper().replace("{", "").replace("}", "")
                       for j, x in enumerate(g)]
             txt = rf"{{\pos(540,{y})}}" + " ".join(partes)
-            linhas.append(f"Dialogue: 0,{_t(p['s'] - inicio)},{_t(min(ate, fim) - inicio)},Fala,,0,0,0,,{txt}")
+            eventos.append([p["s"], min(ate, fim), txt])
+    # a folga de 0,15s da ultima palavra de um grupo nao pode invadir o grupo seguinte:
+    # como todos usam o mesmo \pos, dois eventos ao mesmo tempo sao desenhados um sobre o outro
+    for atual, proximo in zip(eventos, eventos[1:]):
+        atual[1] = min(atual[1], proximo[0])
+    linhas = [f"Dialogue: 0,{_t(ini - inicio)},{_t(f - inicio)},Fala,,0,0,0,,{txt}"
+              for ini, f, txt in eventos if f > ini]
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(CABECALHO + "\n".join(linhas) + "\n", encoding="utf-8")
     return destino
