@@ -301,13 +301,14 @@ def publicar(dados: Path, pedido: dict) -> list[dict]:
 
 
 def estado() -> dict:
-    from . import pub_youtube
+    from . import ia, pub_youtube
 
     cfg = config.carregar()
     return {
         "canais": {n: {"destino": c.get("canal_destino", n), "credito": c.get("credito", "")} for n, c in cfg["canais"].items()},
         "contas": contas.listar(),
         "plataformas": {k: v["nome"] for k, v in contas.PLATAFORMAS.items()},
+        "ia_disponivel": ia.credenciais_disponiveis(),
         "youtube_configurado": pub_youtube.configurado(cfg),
         "youtube_credencial": cfg["publicacao"]["youtube"]["client_secret"],
         "horarios": cfg["publicacao"]["horarios"], "fuso": cfg["publicacao"]["fuso"],
