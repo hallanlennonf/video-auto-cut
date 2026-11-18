@@ -270,9 +270,7 @@ document.addEventListener("click", async e => {
     if (!r.ok) { recado.textContent = r.erro; return; }
     recado.textContent = "";
     window.open(r.url, "enquadramento");
-    if (confirm("Ajuste e salve na aba que abriu.
-
-O enquadramento novo vale para os próximos cortes — este aqui já está renderizado. Re-renderizar este corte agora?")) {
+    if (confirm("Ajuste e salve na aba que abriu.\n\nO enquadramento novo vale para os próximos cortes — este aqui já está renderizado. Re-renderizar este corte agora?")) {
       rerender(el, c);
     }
   }

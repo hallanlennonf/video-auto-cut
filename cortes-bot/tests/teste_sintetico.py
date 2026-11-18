@@ -98,7 +98,7 @@ def main():
         # fala: nota, bordas e legenda queimada no vídeo
         ini = c["inicio"]
         palavras = [{"w": w, "s": ini + 2 + k * 0.4, "e": ini + 2.3 + k * 0.4}
-                    for k, w in enumerate("Caralho, velho! Eu morri, chat. Meu Deus kkkkk".split())]
+                    for k, w in enumerate("Caralho, nossa! Eu morri, chat. Meu Deus kkkkk".split())]
         n = fala.nota_fala(palavras, ini, c["fim"], cfg["whisper"]["reacoes"])
         assert n["reacoes"] >= 4 and n["risadas"] == 1 and n["exclamacoes"] == 1, n
         assert fala.nota_fala([], ini, c["fim"], [])["bruto"] < 0
@@ -113,7 +113,7 @@ def main():
 
         # IA (sem chamar a API): transcrição enviada e aplicação da avaliação
         txt = ia._frases(palavras, ini, c["fim"])
-        assert txt.startswith("[00:02] Caralho, velho!") and "\n" in txt, txt
+        assert txt.startswith("[00:02] Caralho, nossa!") and "\n" in txt, txt
         cs = [{"id": "c0", "inicio": 100.0, "fim": 150.0, "nota": 3.0}, {"id": "c1", "inicio": 300.0, "fim": 330.0, "nota": 5.0}]
         av = {
             "c0": ia.Avaliacao(id="c0", aprovar=True, nota=9, aparar_inicio=5, aparar_fim=3, titulo="T", descricao="D", hashtags=["gta6"], motivo="bom"),
