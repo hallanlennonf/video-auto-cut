@@ -1,0 +1,13 @@
+# ambiente Python local (recriar com: python -m venv .venv && .venv\Scripts\pip install -r cortes-bot\requirements.txt)
+.venv/
+
+# configuração local do Claude Code / editor
+.claude/
+.vscode/
+.idea/
+
+__pycache__/
+*.pyc
+*.tmp
+Thumbs.db
+desktop.ini

@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de cortes</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --surface: #ffffff; --text: #1d1d1b; --muted: #6b6a64; --border: #dedcd4;
+    --accent: #5b4fd6; --accent-bg: #eceafd; --ok: #2f7d32; --ok-bg: #e7f3e4; --bad: #b3261e; --bad-bg: #fbe9e7;
+    --warn: #8a5a00; --warn-bg: #fdf1dc; --chip: #efeee9; --overlay: rgba(20, 20, 18, .45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --surface: #201f1d; --text: #ecebe6; --muted: #a09e96; --border: #3a3935;
+      --accent: #9d94f2; --accent-bg: #2a2742; --ok: #8fd18f; --ok-bg: #1f3320; --bad: #f2a29a; --bad-bg: #3a1f1c;
+      --warn: #f0c46b; --warn-bg: #3a2e15; --chip: #2c2b28; --overlay: rgba(0, 0, 0, .6); }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+  a { color: var(--accent); }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--border); padding: 10px 16px; }
+  .topo { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  nav { display: flex; gap: 4px; }
+  nav a { text-decoration: none; color: var(--muted); padding: 4px 12px; border-radius: 8px; }
+  nav a[aria-current="page"] { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+  .barra { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 8px; }
+  select, button, input, textarea { font: inherit; color: var(--text); }
+  select, input, textarea { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+  button { cursor: pointer; border-radius: 8px; padding: 6px 12px; border: 1px solid var(--border); background: var(--chip); }
+  button.primario { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filtros button { border-radius: 999px; padding: 4px 12px; border-color: transparent; }
+  .filtros button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .contagem { color: var(--muted); font-size: 13px; margin-left: auto; }
+  main { padding: 16px; max-width: 1500px; margin: 0 auto; }
+  .grade { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: grid; grid-template-columns: 150px 1fr; }
+  .card.aprovado { border-color: var(--ok); }
+  .card.rejeitado { opacity: .6; }
+  video { width: 150px; height: 267px; object-fit: cover; background: #000; display: block; }
+  .info { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .badge { background: var(--chip); border-radius: 6px; padding: 0 6px; }
+  .fmt-tiktok, .fmt-compilacao { color: var(--accent); }
+  .info input, .info textarea { width: 100%; }
+  textarea { resize: vertical; min-height: 54px; }
+  .motivo { font-size: 12px; color: var(--muted); font-style: italic; }
+  .acoes { display: flex; gap: 6px; margin-top: auto; }
+  .acoes button { flex: 1; }
+  .acoes .aprovar[aria-pressed="true"] { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+  .acoes .rejeitar[aria-pressed="true"] { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
+  .pubs { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+  .salvo { font-size: 12px; color: var(--ok); min-height: 18px; }
+  details { font-size: 12px; color: var(--muted); }
+  .vazio { color: var(--muted); padding: 40px 16px; text-align: center; }
+  .pill { display: inline-block; border-radius: 999px; padding: 0 8px; font-size: 12px; background: var(--chip); }
+  .st-agendado { background: var(--accent-bg); color: var(--accent); }
+  .st-enviando { background: var(--warn-bg); color: var(--warn); }
+  .st-publicado { background: var(--ok-bg); color: var(--ok); }
+  .st-erro { background: var(--bad-bg); color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 14px; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td .erro { color: var(--bad); font-size: 12px; }
+  td button { padding: 2px 8px; font-size: 13px; margin: 0 4px 4px 0; }
+  .tabela { overflow-x: auto; }
+  .secao { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+  .secao h2 { font-size: 16px; margin: 0 0 8px; }
+  .secao p { margin: 4px 0 10px; color: var(--muted); font-size: 14px; }
+  .linha { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .conta { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .conta:first-of-type { border-top: 0; }
+  .conta .nome { font-weight: 600; }
+  .aviso { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+  label.chk { display: inline-flex; gap: 6px; align-items: center; margin-right: 12px; font-size: 14px; }
+  dialog { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); padding: 0; width: min(560px, calc(100vw - 32px)); }
+  dialog::backdrop { background: var(--overlay); }
+  .dlg { padding: 16px 18px; display: grid; gap: 12px; }
+  .dlg h2 { margin: 0; font-size: 17px; }
+  .dlg fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px 10px; margin: 0; }
+  .dlg legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
+  .dlg .opcao { display: flex; gap: 8px; align-items: center; padding: 4px 0; }
+  .dlg .opcao small { color: var(--muted); }
+  .dlg .rodape { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .dlg .msg { color: var(--bad); font-size: 13px; min-height: 18px; }
+  @media (max-width: 420px) { .grade { grid-template-columns: 1fr; } .card { grid-template-columns: 1fr; } video { width: 100%; height: auto; aspect-ratio: 9/16; } .contagem { margin-left: 0; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="topo">
+    <h1>Painel de cortes</h1>
+    <nav aria-label="Seções">
+      <a href="#revisao" data-aba="revisao">Revisão</a>
+      <a href="#fila" data-aba="fila">Fila</a>
+      <a href="#contas" data-aba="contas">Contas</a>
+    </nav>
+  </div>
+  <div class="barra" id="barra-revisao">
+    <select id="canal" aria-label="Canal"><option value="">Todos os canais</option></select>
+    <select id="formato" aria-label="Formato">
+      <option value="">Todos os formatos</option>
+      <option value="curto">Curtos (Shorts / Reels)</option>
+      <option value="tiktok">TikTok — trechos longos</option>
+      <option value="compilacao">TikTok — compilações</option>
+    </select>
+    <div class="filtros" role="group" aria-label="Status">
+      <button data-s="pendente" aria-pressed="true">Pendentes</button>
+      <button data-s="aprovado" aria-pressed="false">Aprovados</button>
+      <button data-s="rejeitado" aria-pressed="false">Rejeitados</button>
+      <button data-s="" aria-pressed="false">Todos</button>
+    </div>
+    <span class="contagem" id="contagem"></span>
+  </div>
+</header>
+
+<main>
+  <section id="aba-revisao"><div class="grade" id="lista"><p class="vazio">Carregando…</p></div></section>
+  <section id="aba-fila" hidden><div id="fila"></div></section>
+  <section id="aba-contas" hidden><div id="contas"></div></section>
+</main>
+
+<dialog id="dlg" aria-labelledby="dlg-titulo">
+  <form class="dlg" method="dialog" id="dlg-form">
+    <h2 id="dlg-titulo">Publicar</h2>
+    <div id="dlg-resumo" class="meta"></div>
+    <fieldset><legend>Publicar em</legend><div id="dlg-contas"></div></fieldset>
+    <fieldset id="dlg-priv-box"><legend>Visibilidade no YouTube</legend>
+      <select id="dlg-priv" aria-label="Visibilidade no YouTube">
+        <option value="public">Público</option><option value="unlisted">Não listado</option><option value="private">Privado</option>
+      </select>
+    </fieldset>
+    <fieldset><legend>Quando</legend>
+      <label class="opcao"><input type="radio" name="modo" value="proximo" checked> Próximo horário livre <small id="dlg-horarios"></small></label>
+      <label class="opcao"><input type="radio" name="modo" value="agora"> Agora</label>
+      <label class="opcao"><input type="radio" name="modo" value="data"> Em <input type="datetime-local" id="dlg-data" aria-label="Data e hora"></label>
+    </fieldset>
+    <div class="msg" id="dlg-msg" aria-live="polite"></div>
+    <div class="rodape">
+      <button value="cancelar" type="button" id="dlg-cancelar">Cancelar</button>
+      <button type="button" id="dlg-so-aprovar">Só aprovar</button>
+      <button type="button" class="primario" id="dlg-confirmar">Aprovar e agendar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+let cortes = [], E = null, filtroStatus = "pendente", dlgCorte = null;
+const FORMATOS = { curto: "Shorts/Reels", tiktok: "TikTok longo", compilacao: "TikTok compilação" };
+const STATUS = { agendado: "Agendado", enviando: "Enviando", publicado: "Publicado", erro: "Erro", cancelado: "Cancelado" };
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hhmmss = s => { s = Math.floor(s); return `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`; };
+const quando = iso => new Intl.DateTimeFormat("pt-BR", { timeZone: E?.fuso, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+const tags = s => s.split(/[\s,]+/).filter(Boolean);
+
+async function api(url, corpo) {
+  const r = await fetch(url, corpo === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+  return r.json();
+}
+
+// ---------------------------------------------------------------- abas
+function abaAtual() { return (location.hash.slice(1) || "revisao").split("?")[0]; }
+async function mostrarAba() {
+  const aba = ["revisao", "fila", "contas"].includes(abaAtual()) ? abaAtual() : "revisao";
+  document.querySelectorAll("nav a").forEach(a => {
+    if (a.dataset.aba === aba) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  });
+  for (const n of ["revisao", "fila", "contas"]) $(`#aba-${n}`).hidden = n !== aba;
+  $("#barra-revisao").hidden = aba !== "revisao";
+  E = await api("/api/estado");
+  if (aba === "revisao") await carregarCortes();
+  if (aba === "fila") await desenharFila();
+  if (aba === "contas") desenharContas();
+}
+window.addEventListener("hashchange", mostrarAba);
+
+// ---------------------------------------------------------------- revisão
+async function carregarCortes() {
+  cortes = await api("/api/cortes");
+  const canais = [...new Set(cortes.map(c => c.canal))], atual = $("#canal").value;
+  $("#canal").innerHTML = '<option value="">Todos os canais</option>' + canais.map(c => `<option ${c === atual ? "selected" : ""}>${esc(c)}</option>`).join("");
+  desenharCortes();
+}
+
+function desenharCortes() {
+  const canal = $("#canal").value, formato = $("#formato").value;
+  const base = cortes.filter(c => (!canal || c.canal === canal) && (!formato || c.formato === formato));
+  const vis = base.filter(c => !filtroStatus || c.status === filtroStatus);
+  const n = s => base.filter(c => c.status === s).length;
+  $("#contagem").textContent = `${n("pendente")} pendentes · ${n("aprovado")} aprovados · ${n("rejeitado")} rejeitados`;
+  $("#lista").innerHTML = vis.length ? vis.map(card).join("") :
+    '<p class="vazio">Nenhum corte aqui. Rode <code>python -m cortes processar …</code> para gerar.</p>';
+}
+
+function pubsHtml(c) {
+  if (!c.publicacoes.length) return "";
+  return `<div class="pubs">${c.publicacoes.map(p => `<span><span class="pill st-${p.status}">${STATUS[p.status]}</span> ${esc(p.conta)}
+    ${p.url && p.url.startsWith("http") ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">ver</a>` : p.status === "agendado" ? "· " + quando(p.quando) : ""}</span>`).join("")}</div>`;
+}
+
+function card(c) {
+  return `<article class="card ${c.status}" data-id="${esc(c.id)}">
+    <video src="/video/${encodeURI(c.id)}" controls preload="metadata" playsinline></video>
+    <div class="info">
+      <div class="meta"><span class="badge">${esc(c.canal)}</span>
+        <span class="badge fmt-${c.formato}">${FORMATOS[c.formato]}${c.partes ? ` · ${c.partes} partes` : ""}</span>
+        <span>${hhmmss(c.inicio)} · ${c.duracao}s</span>
+        ${c.nota_ia != null ? `<span class="badge">IA ${c.nota_ia}/10</span>` : ""}</div>
+      <input class="titulo" maxlength="100" placeholder="Título" value="${esc(c.titulo)}" aria-label="Título">
+      <textarea class="descricao" placeholder="Descrição" aria-label="Descrição">${esc(c.descricao)}</textarea>
+      <input class="hashtags" placeholder="hashtags separadas por espaço" value="${esc((c.hashtags||[]).join(" "))}" aria-label="Hashtags">
+      ${c.motivo_ia ? `<div class="motivo">IA: ${esc(c.motivo_ia)}</div>` : ""}
+      ${c.texto ? `<details><summary>Transcrição</summary>${esc(c.texto)}</details>` : ""}
+      ${pubsHtml(c)}
+      <div class="acoes">
+        <button class="aprovar" aria-pressed="${c.status === "aprovado"}">${c.status === "aprovado" ? "Publicar em mais contas" : "Aprovar…"}</button>
+        <button class="rejeitar" aria-pressed="${c.status === "rejeitado"}">Rejeitar</button>
+      </div>
+      <div class="salvo" aria-live="polite"></div>
+    </div></article>`;
+}
+
+function camposDoCard(el) {
+  return { titulo: $(".titulo", el).value.trim(), descricao: $(".descricao", el).value, hashtags: tags($(".hashtags", el).value) };
+}
+
+async function salvar(el, mudancas) {
+  const c = cortes.find(x => x.id === el.dataset.id);
+  const r = await api("/api/cortes/" + encodeURI(el.dataset.id), mudancas);
+  if (r.ok) Object.assign(c, mudancas);
+  $(".salvo", el).textContent = r.ok ? "Salvo" : "Erro ao salvar";
+  return r.ok;
+}
+
+document.addEventListener("change", e => {
+  const el = e.target.closest(".card"); if (!el) return;
+  if (e.target.classList.contains("titulo")) salvar(el, { titulo: e.target.value });
+  if (e.target.classList.contains("descricao")) salvar(el, { descricao: e.target.value });
+  if (e.target.classList.contains("hashtags")) salvar(el, { hashtags: tags(e.target.value) });
+});
+
+document.addEventListener("click", async e => {
+  const el = e.target.closest(".card");
+  if (el && e.target.matches(".aprovar")) return abrirPublicar(el);
+  if (el && e.target.matches(".rejeitar")) {
+    const c = cortes.find(x => x.id === el.dataset.id);
+    if (await salvar(el, { status: c.status === "rejeitado" ? "pendente" : "rejeitado", ...camposDoCard(el) })) setTimeout(desenharCortes, 300);
+  }
+  const f = e.target.closest(".filtros button");
+  if (f) { filtroStatus = f.dataset.s; document.querySelectorAll(".filtros button").forEach(b => b.setAttribute("aria-pressed", b === f)); desenharCortes(); }
+});
+$("#canal").addEventListener("change", desenharCortes);
+$("#formato").addEventListener("change", desenharCortes);
+
+// ---------------------------------------------------------------- janela "publicar"
+const DUR_MAX = { youtube: 180, simulacao: 1e9 };
+function abrirPublicar(el) {
+  const c = cortes.find(x => x.id === el.dataset.id);
+  dlgCorte = { el, c };
+  const campos = camposDoCard(el);
+  $("#dlg-titulo").textContent = campos.titulo ? `Publicar: ${campos.titulo}` : "Publicar";
+  $("#dlg-resumo").innerHTML = `<span class="badge">${esc(c.canal)}</span><span class="badge fmt-${c.formato}">${FORMATOS[c.formato]}</span><span>${c.duracao}s</span>`;
+  const jaUsadas = new Set(c.publicacoes.filter(p => p.status !== "erro").map(p => p.conta_id));
+  const lista = E.contas.map(ct => {
+    const ok = c.duracao <= (DUR_MAX[ct.plataforma] ?? 0), ja = jaUsadas.has(ct.id);
+    const marcada = ok && !ja && ct.canais.includes(c.canal);
+    const obs = !ok ? "não aceita essa duração" : ja ? "já está na fila / publicado" : ct.precisa_reconectar ? "precisa reconectar" : "";
+    const tiktokCurto = c.formato === "curto" && ct.plataforma === "tiktok" ? " · curto não monetiza no TikTok" : "";
+    return `<label class="opcao"><input type="checkbox" name="conta" value="${esc(ct.id)}" data-plat="${ct.plataforma}" ${marcada ? "checked" : ""} ${ok && !ja ? "" : "disabled"}>
+      ${esc(ct.nome)} <small>${esc(E.plataformas[ct.plataforma] || ct.plataforma)}${obs ? " · " + obs : ""}${tiktokCurto}</small></label>`;
+  });
+  $("#dlg-contas").innerHTML = lista.length ? lista.join("") : `<p class="motivo">Nenhuma conta vinculada. Vincule na aba <a href="#contas">Contas</a>.</p>`;
+  $("#dlg-priv").value = E.privacidade_youtube;
+  $("#dlg-horarios").textContent = `(${E.horarios.join(", ")} · até ${E.max_por_dia}/dia por conta)`;
+  $("#dlg-msg").textContent = "";
+  atualizarPriv();
+  $("#dlg").showModal();
+}
+function atualizarPriv() {
+  $("#dlg-priv-box").hidden = ![...document.querySelectorAll("#dlg-contas input:checked")].some(i => i.dataset.plat === "youtube");
+}
+$("#dlg-contas").addEventListener("change", atualizarPriv);
+$("#dlg-data").addEventListener("focus", () => { $('input[name="modo"][value="data"]').checked = true; });
+$("#dlg-cancelar").addEventListener("click", () => $("#dlg").close());
+$("#dlg-so-aprovar").addEventListener("click", async () => {
+  const { el } = dlgCorte;
+  if (await salvar(el, { status: "aprovado", ...camposDoCard(el) })) { $("#dlg").close(); setTimeout(desenharCortes, 300); }
+});
+$("#dlg-confirmar").addEventListener("click", async () => {
+  const { el, c } = dlgCorte, campos = camposDoCard(el);
+  const contasSel = [...document.querySelectorAll("#dlg-contas input:checked")].map(i => i.value);
+  const modo = $('input[name="modo"]:checked').value;
+  if (!campos.titulo) return $("#dlg-msg").textContent = "Escreva um título no card antes de publicar.";
+  if (!contasSel.length) return $("#dlg-msg").textContent = "Escolha pelo menos uma conta.";
+  if (modo === "data" && !$("#dlg-data").value) return $("#dlg-msg").textContent = "Escolha a data e a hora.";
+  $("#dlg-confirmar").disabled = true;
+  const r = await api("/api/publicar", { corte_id: c.id, contas: contasSel, modo, data: $("#dlg-data").value || null,
+    privacidade: $("#dlg-priv").value, ...campos });
+  $("#dlg-confirmar").disabled = false;
+  if (!r.ok) return $("#dlg-msg").textContent = r.erro;
+  $("#dlg").close();
+  const txt = r.itens.length ? r.itens.map(i => `${i.conta_nome}: ${quando(i.agendado_para)}`).join(" · ") : "nada novo (já estava na fila)";
+  await carregarCortes();
+  const novo = document.querySelector(`.card[data-id="${CSS.escape(c.id)}"] .salvo`);
+  if (novo) novo.textContent = "Agendado — " + txt;
+});
+
+// ---------------------------------------------------------------- fila
+async function desenharFila() {
+  const itens = await api("/api/fila");
+  if (!itens.length) return $("#fila").innerHTML = '<p class="vazio">A fila está vazia. Aprove um corte na Revisão para agendar.</p>';
+  $("#fila").innerHTML = `<div class="tabela"><table>
+    <thead><tr><th>Quando</th><th>Vídeo</th><th>Conta</th><th>Status</th><th>Ações</th></tr></thead><tbody>
+    ${itens.map(i => `<tr>
+      <td>${quando(i.agendado_para)}</td>
+      <td>${esc(i.titulo)}<br><small class="motivo">${esc(i.corte_id.split("/")[0])}</small></td>
+      <td>${esc(i.conta_nome)}<br><small class="motivo">${esc(E.plataformas[i.plataforma] || i.plataforma)}${i.plataforma === "youtube" ? " · " + esc(i.privacidade) : ""}</small></td>
+      <td><span class="pill st-${i.status}">${STATUS[i.status]}</span>
+        ${i.resultado?.url?.startsWith("http") ? `<br><a href="${esc(i.resultado.url)}" target="_blank" rel="noopener">abrir vídeo</a>` : ""}
+        ${i.resultado?.privacidade && i.resultado.privacidade !== i.privacidade ? `<br><small class="motivo">ficou ${esc(i.resultado.privacidade)}</small>` : ""}
+        ${i.erro ? `<div class="erro">${esc(i.erro)}</div>` : ""}</td>
+      <td>${i.status === "agendado" ? `<button data-acao="agora" data-id="${i.id}">Publicar agora</button><button data-acao="cancelar" data-id="${i.id}">Cancelar</button>` : ""}
+        ${i.status === "erro" || i.status === "cancelado" ? `<button data-acao="tentar" data-id="${i.id}">Reagendar</button>` : ""}
+        ${i.status === "erro" ? `<button data-acao="cancelar" data-id="${i.id}">Cancelar</button>` : ""}</td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+$("#fila").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-acao]"); if (!b) return;
+  b.disabled = true;
+  const r = await api(`/api/fila/${b.dataset.id}/${b.dataset.acao}`, {});
+  if (!r.ok) alert(r.erro);
+  desenharFila();
+});
+setInterval(() => { if (abaAtual() === "fila" && !document.hidden) desenharFila(); }, 8000);
+
+// ---------------------------------------------------------------- contas
+function desenharContas() {
+  const canais = Object.entries(E.canais);
+  const contasHtml = E.contas.length ? E.contas.map(ct => `<div class="conta" data-id="${esc(ct.id)}">
+      <div class="linha"><span class="nome">${esc(ct.nome)}</span><span class="pill">${esc(E.plataformas[ct.plataforma] || ct.plataforma)}</span>
+        ${ct.url ? `<a href="${esc(ct.url)}" target="_blank" rel="noopener">abrir canal</a>` : ""}</div>
+      ${ct.precisa_reconectar ? `<div class="aviso">O acesso expirou ou foi revogado. <a href="/oauth/${esc(ct.plataforma)}/iniciar">Vincular de novo</a></div>` : ""}
+      <div><small class="motivo">Conta padrão para:</small><br>${canais.map(([n, c]) =>
+        `<label class="chk"><input type="checkbox" data-canal="${esc(n)}" ${ct.canais.includes(n) ? "checked" : ""}> ${esc(c.destino)}</label>`).join("")}</div>
+      <div><button class="remover">Remover conta</button> <span class="salvo"></span></div>
+    </div>`).join("") : '<p>Nenhuma conta vinculada ainda.</p>';
+  $("#contas").innerHTML = `
+    <div class="secao"><h2>Contas vinculadas</h2>
+      <p>Marque para quais streamers cada conta é padrão: ao aprovar um corte, essas contas já vêm selecionadas.</p>
+      ${contasHtml}</div>
+    <div class="secao"><h2>Vincular YouTube</h2>
+      ${E.youtube_configurado
+        ? `<p>Você vai fazer login no site do Google e escolher o canal. O painel recebe só uma autorização para enviar vídeos; sua senha nunca passa por aqui.</p>
+           <a href="/oauth/youtube/iniciar"><button type="button" class="primario">Vincular canal do YouTube</button></a>`
+        : `<div class="aviso">Falta a credencial do Google. Siga o passo a passo do README e salve o arquivo em <code>${esc(E.youtube_credencial)}</code>; depois recarregue esta página.</div>`}
+      <p>Sem a auditoria do Google, o YouTube deixa os vídeos enviados pela API como privados. Cota padrão: ~6 envios por dia somando todos os canais.</p></div>
+    <div class="secao"><h2>Conta de simulação</h2>
+      <p>Não publica nada: serve para testar a fila e os horários.</p>
+      <div class="linha"><input id="sim-nome" placeholder="Nome (ex.: Teste alanzoka)" aria-label="Nome da conta de simulação"><button id="sim-add">Adicionar</button></div></div>
+    <div class="secao"><h2>TikTok e Instagram</h2><p>Em breve.</p></div>`;
+}
+$("#contas").addEventListener("change", async e => {
+  const el = e.target.closest(".conta"); if (!el || !e.target.dataset.canal) return;
+  const canais = [...el.querySelectorAll("input[data-canal]:checked")].map(i => i.dataset.canal);
+  const r = await api(`/api/contas/${el.dataset.id}`, { canais });
+  $(".salvo", el).textContent = r.ok ? "Salvo" : r.erro;
+  E = await api("/api/estado");
+});
+$("#contas").addEventListener("click", async e => {
+  if (e.target.id === "sim-add") {
+    await api("/api/contas/simulacao", { nome: $("#sim-nome").value });
+    E = await api("/api/estado"); desenharContas();
+  }
+  if (e.target.matches(".remover")) {
+    const el = e.target.closest(".conta");
+    if (!confirm("Remover esta conta? Os itens já agendados nela vão falhar.")) return;
+    await api(`/api/contas/${el.dataset.id}/remover`, {});
+    E = await api("/api/estado"); desenharContas();
+  }
+});
+
+mostrarAba();
+</script>
+</body>
+</html>

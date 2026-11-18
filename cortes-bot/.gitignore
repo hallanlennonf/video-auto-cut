@@ -1,0 +1,9 @@
+# credenciais e tokens de acesso: nunca versionar
+segredos/
+dados/_publicacao/
+
+# vídeos, áudios e resultados (grandes e locais)
+dados/
+
+__pycache__/
+*.tmp

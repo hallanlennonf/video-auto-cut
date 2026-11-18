@@ -1,0 +1,14 @@
+yt-dlp
+imageio-ffmpeg
+websockets
+httpx
+pyyaml
+numpy
+faster-whisper
+anthropic
+google-api-python-client
+google-auth-oauthlib
+tzdata
+# GPU NVIDIA no Windows (CUDA 12 / cuDNN 9 via pip):
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*

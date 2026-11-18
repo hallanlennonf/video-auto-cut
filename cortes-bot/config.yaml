@@ -1,0 +1,113 @@
+# Configuração do bot de cortes — um canal de destino por streamer.
+
+pasta_dados: dados   # VODs, chats, candidatos e cortes ficam aqui (uma subpasta por streamer)
+
+corte:                   # 1ª versão: cortes curtos (Shorts / Reels)
+  duracao_min: 20        # segundos
+  duracao_max: 60        # Shorts/TikTok/Reels: até 60s é o ponto ideal
+  margem_antes: 10       # o momento acontece ANTES da reação do chat
+  margem_depois: 4
+  max_cortes_por_vod: 10   # cortes finais renderizados por live
+  max_tela_parada: 0.3   # descarta o corte se >30% dele for imagem parada (tela de pausa com música)
+
+tiktok:                  # 2ª versão: vídeos > 1 min (exigência da monetização do TikTok)
+  ativo: true
+  duracao_min: 65        # segundos (folga acima de 60s)
+  duracao_max: 120
+  janela_longa: 90       # tamanho dos trechos longos procurados
+  nota_minima_longo: 0.6 # média da nota no trecho; abaixo disso não é "atividade sustentada"
+  candidatos_longos: 8   # quantos trechos longos o Whisper ouve
+  max_longos_por_live: 3
+  max_compilacoes_por_live: 3   # compilações de 2–4 cortes curtos do mesmo tema
+
+deteccao:
+  janela: 8              # segundos somados para medir "intensidade" do chat/áudio
+  atraso_chat: 5         # o chat reage com atraso (delay da live + tempo de digitar)
+  baseline: 300          # janela (s) da média móvel usada como "normal" da live
+  peso_chat: 0.65
+  peso_audio: 0.35
+  nota_minima: 1.8       # em desvios acima do normal; abaixo disso não vira candidato
+                         # (com Whisper ligado dá para ser mais permissivo: a fala filtra depois)
+  palavras_reacao:       # mensagens com estes termos contam mais
+    - KEKW
+    - OMEGALUL
+    - LUL
+    - KEKL
+    - Pog
+    - monkaS
+    - LOL
+    - "?"
+  regex_risada: "(k{4,}|(ha){3,}|(rs){3,})"
+
+whisper:
+  ativo: true
+  modelo: large-v3-turbo   # ~1,6 GB; roda na GPU NVIDIA (ou CPU, bem mais lento)
+  dispositivo: auto        # auto | cuda | cpu
+  candidatos_para_ouvir: 30  # quantos momentos (de áudio/chat) são transcritos antes de escolher
+  peso_fala: 1.0           # quanto a fala pesa na nota final, junto com áudio/chat
+  legendas: true
+  reacoes:                 # expressões que indicam reação forte
+    - caralho
+    - porra
+    - puta
+    - meu deus
+    - nossa
+    - mano
+    - velho
+    - socorro
+    - nao acredito
+    - que isso
+    - morri
+    - mentira
+    - olha isso
+    - cade
+    - eita
+    - vixe
+
+ia:
+  ativo: true              # precisa de ANTHROPIC_API_KEY; sem ela o bot segue sem esta etapa
+  contexto: ""             # dica opcional para a IA, ex.: "A live é de GTA 6, lançado em novembro de 2026."
+
+publicacao:
+  fuso: America/Sao_Paulo
+  horarios: ["11:00", "14:00", "18:00", "21:00"]   # horários em que a fila publica (um vídeo por conta por horário)
+  max_por_dia_por_conta: 4
+  youtube:
+    # Credencial OAuth "Aplicativo da Web" criada no Google Cloud (veja o README).
+    # Redirecionamento autorizado: http://localhost:8800/oauth/youtube/callback
+    client_secret: segredos/youtube_client_secret.json
+    privacidade: public      # public | unlisted | private (projeto sem auditoria: o YouTube força private)
+    categoria: "20"          # 20 = Jogos
+    envios_por_dia: 6        # cota padrão do projeto: 10.000 unidades/dia, cada envio gasta 1.600
+
+canais:
+  alanzoka:
+    plataforma: twitch
+    login: alanzoka
+    url: https://www.twitch.tv/alanzoka
+    canal_destino: Cortes do Alanzoka
+    credito: twitch.tv/alanzoka
+    # Recorte da facecam no vídeo original (pixels, em 1920x1080).
+    # Deixe null até medir; sem facecam o corte usa fundo desfocado.
+    facecam: {x: 4, y: 4, w: 428, h: 290}   # medido no VOD de 17/11/2026 (canto sup. esquerdo)
+
+  paulinholokobr:
+    plataforma: kick
+    login: paulinholokobr
+    url: https://kick.com/paulinholokobr
+    canal_destino: Cortes do Paulinho o LOKO
+    credito: kick.com/paulinholokobr
+    facecam: null
+
+  coringa:
+    plataforma: kick
+    login: coringa
+    url: https://kick.com/coringa
+    canal_destino: Cortes do Coringa
+    credito: kick.com/coringa
+    facecam: null
+
+kick_api:
+  # Crie um app em https://kick.com/settings/developer e preencha via variáveis de ambiente:
+  #   KICK_CLIENT_ID e KICK_CLIENT_SECRET
+  porta_webhook: 8787

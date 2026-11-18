@@ -1,0 +1,72 @@
+"""Lista e baixa VODs com yt-dlp (Twitch e Kick)."""
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from . import config, hls
+
+
+def _url_videos(canal: dict) -> str:
+    if canal["plataforma"] == "twitch":
+        return f"https://www.twitch.tv/{canal['login']}/videos?filter=archives&sort=time"
+    return f"https://kick.com/{canal['login']}/videos"
+
+
+def listar(canal: dict, n: int = 5) -> list[dict]:
+    cmd = [sys.executable, "-m", "yt_dlp", "--flat-playlist", "--playlist-items", f"1:{n}", "-J", _url_videos(canal)]
+    out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=True).stdout
+    return [{"id": e.get("id"), "titulo": e.get("title"), "duracao": e.get("duration"), "url": e.get("url")} for e in json.loads(out).get("entries", [])]
+
+
+def baixar(url: str, pasta: Path, altura_max: int = 1080) -> Path:
+    """Baixa o VOD + .info.json (o info traz o horário de início, usado para alinhar o chat)."""
+    modelo = str(pasta / "%(id)s.%(ext)s")
+    cmd = [
+        sys.executable, "-m", "yt_dlp", url,
+        "-f", f"bv*[height<={altura_max}]+ba/b[height<={altura_max}]/b",
+        "--merge-output-format", "mp4",
+        "--ffmpeg-location", config.ffmpeg(),
+        "--write-info-json", "--no-part",
+        "-o", modelo, "--print", "after_move:filepath",
+    ]
+    out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip().splitlines()
+    return Path(out[-1])
+
+
+def _info(url: str, formato: str) -> dict:
+    cmd = [sys.executable, "-m", "yt_dlp", url, "-f", formato, "-J"]
+    return json.loads(subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=True).stdout)
+
+
+def baixar_audio(url: str, pasta: Path) -> Path:
+    """Baixa só o áudio do VOD (~15x menor que 720p) em paralelo. Basta para a detecção."""
+    info = _info(url, "Audio_Only/ba/worst")
+    destino = pasta / f"{info['id']}_audio.mp4"
+    destino.with_suffix(".info.json").write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
+    hls.baixar(info["url"], destino)
+    return destino
+
+
+def baixar_trecho(url: str, inicio: float, fim: float, destino: Path, altura_max: int = 1080) -> float:
+    """Baixa só os pedaços de vídeo que cobrem [inicio, fim].
+    Retorna em que segundo do VOD o arquivo baixado começa (para o corte acertar o tempo)."""
+    info = _info(url, f"b[height<={altura_max}]/b")
+    return hls.baixar(info["url"], destino, inicio, fim, progresso=False)
+
+
+def inicio_do_vod(video: Path) -> float | None:
+    """Epoch (UTC) do início da live, lido do .info.json do yt-dlp."""
+    info = video.with_suffix(".info.json")
+    if not info.exists():
+        return None
+    d = json.loads(info.read_text(encoding="utf-8"))
+    return d.get("timestamp") or d.get("release_timestamp")
+
+
+def url_do_vod(video: Path) -> str | None:
+    info = video.with_suffix(".info.json")
+    if not info.exists():
+        return None
+    d = json.loads(info.read_text(encoding="utf-8"))
+    return d.get("webpage_url")
