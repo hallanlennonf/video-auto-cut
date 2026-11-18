@@ -182,3 +182,48 @@ def montar_compilacoes(curtos: list[dict], compilacoes: list[Compilacao], cfg: d
         if len(saida) >= tk["max_compilacoes_por_live"]:
             break
     return saida
+
+
+# ------------------------------------------------------------------ legenda de um corte só
+
+LEGENDA = """Você escreve a legenda de um corte vertical de live para TikTok, Shorts e Reels.
+
+- titulo: até 80 caracteres, em português do Brasil, na voz de quem assistiu. Diga o que acontece,
+  sem enrolação e sem clickbait vazio ("você não vai acreditar"). Nada de emoji.
+- descricao: uma ou duas frases curtas que completem o título, não que o repitam.
+- hashtags: 3 a 5, minúsculas, sem o símbolo #, sem espaço. Inclua o jogo e o streamer quando fizer sentido.
+
+Você recebe a transcrição do trecho. Se ela não disser nada de interessante, diga isso no título
+em vez de inventar: é melhor o editor saber que o corte é fraco."""
+
+
+class Legenda(BaseModel):
+    titulo: str
+    descricao: str
+    hashtags: list[str]
+
+
+def legenda_para(c: dict, canal: dict, cfg: dict) -> dict:
+    """Título, descrição e hashtags para um corte já escolhido. Levanta RuntimeError em erro."""
+    import anthropic
+
+    if not credenciais_disponiveis():
+        raise RuntimeError("falta a ANTHROPIC_API_KEY: defina a variável de ambiente e reinicie o painel.")
+    texto = _frases(c.get("palavras", []), c["inicio"], c["fim"]) if c.get("palavras") else (c.get("texto") or "")
+    hint = (cfg.get("ia") or {}).get("contexto", "")
+    pedido = (f"Canal: {canal.get('canal_destino', '')} (streamer: {canal.get('login', '')})."
+              f"{(' ' + hint) if hint else ''}\n\nTranscrição do corte:\n{texto or '(sem fala)'}")
+    try:
+        resp = anthropic.Anthropic().beta.messages.parse(
+            model=MODELO, max_tokens=2000, system=LEGENDA,
+            messages=[{"role": "user", "content": pedido}],
+            output_format=Legenda, output_config={"effort": "low"},
+            betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+        )
+    except Exception as e:
+        raise RuntimeError(f"a IA não respondeu: {e}") from e
+    if resp.parsed_output is None:
+        raise RuntimeError(f"resposta incompleta da IA (stop_reason={resp.stop_reason})")
+    r = resp.parsed_output
+    return {"titulo": r.titulo[:100], "descricao": r.descricao,
+            "hashtags": [h.strip().lstrip("#") for h in r.hashtags if h.strip()][:10]}

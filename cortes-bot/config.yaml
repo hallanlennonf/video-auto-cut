@@ -1,6 +1,8 @@
 # Configuração do bot de cortes — um canal de destino por streamer.
 
 pasta_dados: dados   # VODs, chats, candidatos e cortes ficam aqui (uma subpasta por streamer)
+pasta_prontos: ../prontos   # cópia dos cortes aprovados no painel, com a legenda em .txt ao lado,
+                            # para publicar à mão enquanto as contas não estão vinculadas
 
 corte:                   # 1ª versão: cortes curtos (Shorts / Reels)
   duracao_min: 20        # segundos
