@@ -4,7 +4,8 @@
 - Revisão: assiste aos cortes de todos os canais, edita título/descrição/hashtags, aprova ou rejeita.
 - Ao aprovar: escolhe em quais contas publicar e quando (próximo horário livre, agora ou data/hora).
 - Fila: acompanha, cancela, adianta ou tenta de novo cada publicação.
-- Contas: vincula canais do YouTube (login no site do Google) e define as contas padrão de cada streamer.
+- Contas: vincula canais do YouTube e contas do TikTok (login no site de cada um) e define as contas
+  padrão de cada streamer.
 
 Só escuta em 127.0.0.1 e recusa pedidos vindos de outros sites (checagem de Host/Origin), para que
 uma página qualquer aberta no navegador não consiga publicar nada em seu nome.
@@ -62,7 +63,8 @@ def listar(dados: Path) -> list[dict]:
         if item["status"] != "cancelado":
             publicacoes.setdefault(item["corte_id"], []).append(
                 {"conta": item["conta_nome"], "conta_id": item["conta_id"], "plataforma": item["plataforma"], "status": item["status"],
-                 "quando": item["agendado_para"], "url": (item.get("resultado") or {}).get("url")})
+                 "quando": item["agendado_para"], "url": (item.get("resultado") or {}).get("url"),
+                 "modo": (item.get("resultado") or {}).get("modo")})
     saida = []
     for arq in _arquivos_json(dados):
         canal, live = arq.parent.parent.name, arq.stem
@@ -283,33 +285,72 @@ def publicar(dados: Path, pedido: dict) -> list[dict]:
         raise ValueError("modo de agendamento inválido")
     if pedido["modo"] == "data" and not pedido.get("data"):
         raise ValueError("escolha a data e hora")
-    c = atualizar(dados, ident, {"status": "aprovado", "titulo": pedido["titulo"],
-                                 "descricao": pedido.get("descricao", ""), "hashtags": pedido.get("hashtags", [])})
-    rev = c["revisao"]
-    canal = cfg["canais"].get(ident.split("/")[0], {})
-    duracao = c.get("duracao") or (c["fim"] - c["inicio"])
+    arq, lista, idx = _localizar(dados, ident)
+    atual = json.loads(arq.read_text(encoding="utf-8"))[lista][idx]
+    duracao = atual.get("duracao") or (atual["fim"] - atual["inicio"])
+    escolhidas = []
     for cid in pedido["contas"]:
         conta = contas.obter(cid)
         if conta is None:
             raise ValueError("conta não encontrada")
         if not contas.compativel(conta, duracao):
             raise ValueError(f"{conta['nome']} não aceita vídeos de {duracao:.0f}s")
+        escolhidas.append(conta)
+    opcoes = {}
+    if any(ct["plataforma"] == "tiktok" for ct in escolhidas):
+        opcoes["tiktok"] = opcoes_tiktok(pedido.get("tiktok") or {}, escolhidas)
+
+    c = atualizar(dados, ident, {"status": "aprovado", "titulo": pedido["titulo"],
+                                 "descricao": pedido.get("descricao", ""), "hashtags": pedido.get("hashtags", [])})
+    rev = c["revisao"]
+    canal = cfg["canais"].get(ident.split("/")[0], {})
     corte = {"id": ident, "arquivo": c["arquivo"], "titulo": rev["titulo"], "descricao": rev.get("descricao", ""),
-             "hashtags": rev.get("hashtags", []), "credito": canal.get("credito", "")}
+             "hashtags": rev.get("hashtags", []), "credito": canal.get("credito", ""), "duracao": round(duracao, 1)}
     privacidade = pedido.get("privacidade") if pedido.get("privacidade") in ("public", "unlisted", "private") else None
-    return fila.agendar(corte, pedido["contas"], pedido["modo"], cfg, pedido.get("data"), privacidade)
+    return fila.agendar(corte, pedido["contas"], pedido["modo"], cfg, pedido.get("data"), privacidade, opcoes)
+
+
+def opcoes_tiktok(tk: dict, escolhidas: list[dict]) -> dict:
+    """Valida as escolhas do TikTok (as regras de postagem direta vêm das diretrizes do TikTok)."""
+    from . import pub_tiktok
+
+    modo = tk.get("modo")
+    if modo not in pub_tiktok.MODOS:
+        raise ValueError("escolha como enviar ao TikTok: rascunho ou direto")
+    for ct in escolhidas:
+        if ct["plataforma"] == "tiktok" and modo not in ct.get("modos", pub_tiktok.MODOS):
+            raise ValueError(f"{ct['nome']} não autorizou o modo {modo}; vincule a conta de novo")
+    if modo == "rascunho":
+        return {"modo": "rascunho"}
+    priv = tk.get("privacidade")
+    if priv not in pub_tiktok.PRIVACIDADES:
+        raise ValueError("escolha quem pode ver o vídeo no TikTok")
+    if tk.get("comercial") and not (tk.get("marca_propria") or tk.get("conteudo_marca")):
+        raise ValueError("indique se o conteúdo comercial promove você, uma marca parceira ou ambos")
+    if tk.get("comercial") and tk.get("conteudo_marca") and priv == "SELF_ONLY":
+        raise ValueError("conteúdo de marca não pode ser privado (“Só eu”) no TikTok")
+    comercial = bool(tk.get("comercial"))
+    return {"modo": "direto", "privacidade": priv, "comentarios": bool(tk.get("comentarios")),
+            "dueto": bool(tk.get("dueto")), "costura": bool(tk.get("costura")),
+            "marca_propria": comercial and bool(tk.get("marca_propria")),
+            "conteudo_marca": comercial and bool(tk.get("conteudo_marca"))}
 
 
 def estado() -> dict:
-    from . import pub_youtube
+    from . import pub_tiktok, pub_youtube
 
     cfg = config.carregar()
     return {
         "canais": {n: {"destino": c.get("canal_destino", n), "credito": c.get("credito", "")} for n, c in cfg["canais"].items()},
         "contas": contas.listar(),
         "plataformas": {k: v["nome"] for k, v in contas.PLATAFORMAS.items()},
+        "duracao_max": {k: v["duracao_max"] for k, v in contas.PLATAFORMAS.items()},
         "youtube_configurado": pub_youtube.configurado(cfg),
         "youtube_credencial": cfg["publicacao"]["youtube"]["client_secret"],
+        "tiktok_configurado": pub_tiktok.configurado(cfg),
+        "tiktok_credencial": config.relativo(pub_tiktok.arquivo_credencial(cfg)),
+        "tiktok_modo": pub_tiktok.modo_padrao(cfg),
+        "privacidades_tiktok": pub_tiktok.PRIVACIDADES,
         "horarios": cfg["publicacao"]["horarios"], "fuso": cfg["publicacao"]["fuso"],
         "max_por_dia": cfg["publicacao"]["max_por_dia_por_conta"],
         "privacidade_youtube": cfg["publicacao"]["youtube"].get("privacidade", "public"),
@@ -319,7 +360,7 @@ def estado() -> dict:
 # ------------------------------------------------------------------ servidor
 
 def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
-    from . import pub_youtube
+    from . import pub_tiktok, pub_youtube
 
     pagina = Path(__file__).parent / "painel.html"
     estilo = Path(__file__).parent / "estilo.css"
@@ -341,6 +382,7 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
             self.send_response(status)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(corpo)))
+            self.send_header("Cache-Control", "no-store")  # depois de atualizar o código, a página nova aparece já
             self.end_headers()
             self.wfile.write(corpo)
 
@@ -370,6 +412,7 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/css; charset=utf-8")
                     self.send_header("Content-Length", str(len(corpo)))
+                    self.send_header("Cache-Control", "no-store")
                     self.end_headers()
                     self.wfile.write(corpo)
                 elif url.path == "/api/cortes":
@@ -416,10 +459,35 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                     conta = pub_youtube.concluir_vinculo(q.get("state", [""])[0], q.get("code", [""])[0])
                     self._mensagem("Canal vinculado", f"<b>{html_mod.escape(conta['nome'])}</b> foi vinculado. "
                                    "Agora escolha, na aba Contas, para quais streamers ele é conta padrão.")
+                elif url.path == "/oauth/tiktok/iniciar":
+                    cfg = config.carregar()
+                    if not pub_tiktok.configurado(cfg):
+                        return self._mensagem("Falta a credencial do TikTok",
+                                              "Siga o passo a passo do README para criar o app no TikTok for Developers "
+                                              f"e salve a chave em <code>{html_mod.escape(config.relativo(pub_tiktok.arquivo_credencial(cfg)))}</code>.", 400)
+                    self._redirecionar(pub_tiktok.iniciar_vinculo(cfg, porta))
+                elif url.path == "/oauth/tiktok/callback":
+                    q = parse_qs(url.query)
+                    if "error" in q:
+                        return self._mensagem("Vínculo cancelado", html_mod.escape(
+                            (q.get("error_description") or q["error"])[0]))
+                    conta = pub_tiktok.concluir_vinculo(q.get("state", [""])[0], q.get("code", [""])[0], config.carregar())
+                    self._mensagem("Conta vinculada", f"<b>{html_mod.escape(conta['nome'])}</b> foi vinculada ao painel. "
+                                   "Agora escolha, na aba Contas, para quais streamers ela é conta padrão.")
+                elif m := re.fullmatch(r"/api/tiktok/([\w-]+)/criador", url.path):
+                    conta = contas.obter(m.group(1))
+                    if conta is None or conta["plataforma"] != "tiktok":
+                        return self._json({"ok": False, "erro": "conta não encontrada"}, 404)
+                    try:
+                        self._json({"ok": True, "criador": pub_tiktok.info_criador(conta, config.carregar())})
+                    except Exception as e:  # noqa: BLE001 - mostra o motivo na janela de publicar
+                        if isinstance(e, fila.ErroConta):
+                            contas.atualizar(conta["id"], precisa_reconectar=True)
+                        self._json({"ok": False, "erro": str(e)})
                 else:
                     self.send_error(404)
             except (ValueError, KeyError, IndexError, FileNotFoundError, RuntimeError,
-                    subprocess.SubprocessError) as e:
+                    subprocess.SubprocessError, fila.ErroConta, fila.ErroCota, fila.ErroDefinitivo) as e:
                 if url.path.startswith("/oauth/"):
                     self._mensagem("Não deu certo", html_mod.escape(str(e)), 400)
                 else:

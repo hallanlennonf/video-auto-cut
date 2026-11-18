@@ -79,6 +79,12 @@ publicacao:
     privacidade: public      # public | unlisted | private (projeto sem auditoria: o YouTube força private)
     categoria: "20"          # 20 = Jogos
     envios_por_dia: 6        # cota padrão do projeto: 10.000 unidades/dia, cada envio gasta 1.600
+  tiktok:
+    # App do TikTok for Developers (Login Kit "Desktop" + Content Posting API; veja o README).
+    # Redirecionamento cadastrado no app: http://localhost:8800/oauth/tiktok/callback
+    credencial: segredos/tiktok_app.json   # {"client_key": "...", "client_secret": "..."}
+    modo: rascunho   # padrão da janela de publicar: rascunho (você publica pelo app, pode ser público)
+                     # ou direto (com legenda; sem auditoria do TikTok: só conta privada e vídeo "Só eu")
 
 canais:
   alanzoka:
