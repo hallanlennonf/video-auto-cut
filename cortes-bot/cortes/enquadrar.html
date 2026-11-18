@@ -1,0 +1,178 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Enquadramento</title>
+<link rel="stylesheet" href="/estilo.css">
+
+<header>
+  <div class="topo"><h1>Enquadramento<span class="sub" id="canal"></span></h1></div>
+</header>
+
+<div class="oficina">
+<div class="lado">
+  <div class="rotulo" id="arquivo"></div>
+  <canvas id="palco" width="960" height="540"></canvas>
+  <div class="legenda">
+    <span class="chip"><i class="cor" style="background:#22e3ff"></i> câmera</span>
+    <span class="chip"><i class="cor" style="background:#ff2d95"></i> conteúdo</span>
+    <span style="color:#888">arraste o meio para mover, os cantos para redimensionar</span>
+  </div>
+  <div class="frames" id="frames"></div>
+</div>
+
+<div class="lado">
+  <div class="rotulo">prévia 1080 × 1920</div>
+  <canvas id="previa" width="270" height="480"></canvas>
+  <table class="medidas">
+    <tr><td>câmera</td><td><b id="tcam"></b></td></tr>
+    <tr><td>faixa preta</td><td><b id="tfaixa"></b></td></tr>
+    <tr><td>conteúdo</td><td><b id="tjogo"></b></td></tr>
+    <tr><td>largura mantida</td><td><b id="tlarg"></b></td></tr>
+  </table>
+  <div id="aviso"></div>
+  <button id="salvar" class="primario">Salvar enquadramento</button>
+  <div id="recado"></div>
+</div>
+</div>
+
+<script>
+const LARG = 1920, ALT = 1080, ESC = 0.5;      // frame mostrado em 960x540
+const palco = document.getElementById('palco'), pctx = palco.getContext('2d');
+const previa = document.getElementById('previa'), vctx = previa.getContext('2d');
+let dados = null, imgs = [], atual = 0, caixas = null, arrasto = null;
+
+const par = n => { n = Math.round(n); return n + (n % 2); };
+
+function medir() {
+  const hcam = Math.min(par(1080 * caixas.cam.h / caixas.cam.w), 1900);
+  const hjogo = par(1080 * caixas.conteudo.h / caixas.conteudo.w);
+  return { hcam, hjogo, faixa: 1920 - hcam - hjogo };
+}
+
+function desenhar() {
+  pctx.clearRect(0, 0, palco.width, palco.height);
+  if (imgs[atual]) pctx.drawImage(imgs[atual], 0, 0, palco.width, palco.height);
+  for (const [nome, cor] of [['cam', '#22e3ff'], ['conteudo', '#ff2d95']]) {
+    const c = caixas[nome];
+    pctx.strokeStyle = cor; pctx.lineWidth = 2;
+    pctx.strokeRect(c.x * ESC, c.y * ESC, c.w * ESC, c.h * ESC);
+    pctx.fillStyle = cor;
+    for (const [hx, hy] of cantos(c)) pctx.fillRect(hx * ESC - 4, hy * ESC - 4, 8, 8);
+  }
+  desenharPrevia();
+}
+
+const cantos = c => [[c.x, c.y], [c.x + c.w, c.y], [c.x, c.y + c.h], [c.x + c.w, c.y + c.h]];
+
+function desenharPrevia() {
+  const m = medir(), e = 270 / 1080;
+  vctx.fillStyle = '#000'; vctx.fillRect(0, 0, previa.width, previa.height);
+  const img = imgs[atual];
+  if (img) {
+    const ex = img.naturalWidth / LARG, ey = img.naturalHeight / ALT;   // frame pode vir noutra escala
+    const rec = (c, destY, destH) => vctx.drawImage(img, c.x * ex, c.y * ey, c.w * ex, c.h * ey,
+                                                    0, destY, 270, destH);
+    if (m.faixa >= 0) {
+      rec(caixas.cam, 0, m.hcam * e);
+      rec(caixas.conteudo, (m.hcam + m.faixa) * e, m.hjogo * e);
+    }
+  }
+  if (m.faixa > 0) {   // legenda de exemplo no meio da faixa
+    vctx.fillStyle = '#fff';
+    vctx.font = 'bold 13px Anton, Arial Black, sans-serif';
+    vctx.textAlign = 'center'; vctx.textBaseline = 'middle';
+    vctx.fillText('LEGENDA AQUI', 135, (m.hcam + m.faixa / 2) * e);
+  }
+  vctx.fillStyle = '#fff'; vctx.font = 'bold 9px sans-serif'; vctx.textAlign = 'center';
+  vctx.fillText('twitch.tv/…', 135, 480 - 50 * e);
+
+  document.getElementById('tcam').textContent = `1080 × ${m.hcam}`;
+  document.getElementById('tfaixa').textContent = `${m.faixa} px`;
+  document.getElementById('tjogo').textContent = `1080 × ${m.hjogo}`;
+  document.getElementById('tlarg').textContent =
+    `${(100 * caixas.conteudo.w / LARG).toFixed(1)}% do vídeo`;
+  const aviso = document.getElementById('aviso');
+  const cruza = !(caixas.conteudo.x + caixas.conteudo.w <= caixas.cam.x ||
+                  caixas.cam.x + caixas.cam.w <= caixas.conteudo.x ||
+                  caixas.conteudo.y + caixas.conteudo.h <= caixas.cam.y ||
+                  caixas.cam.y + caixas.cam.h <= caixas.conteudo.y);
+  aviso.textContent = m.faixa < 0
+    ? 'Não cabe em 1920: diminua a altura da câmera ou alargue o conteúdo.'
+    : m.faixa < 60 ? 'Faixa estreita demais para a legenda.'
+    : cruza ? 'O conteúdo pega a câmera: o rosto vai aparecer duas vezes.' : '';
+  document.getElementById('salvar').disabled = m.faixa < 0;
+}
+
+function alvo(mx, my) {
+  for (const nome of ['cam', 'conteudo']) {           // cam primeiro: costuma ser menor
+    const c = caixas[nome];
+    const cs = cantos(c);
+    for (let i = 0; i < 4; i++) {
+      if (Math.hypot(mx - cs[i][0], my - cs[i][1]) < 14 / ESC) return { nome, canto: i };
+    }
+  }
+  for (const nome of ['cam', 'conteudo']) {
+    const c = caixas[nome];
+    if (mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h) return { nome, canto: -1 };
+  }
+  return null;
+}
+
+palco.addEventListener('mousedown', ev => {
+  const r = palco.getBoundingClientRect();
+  const mx = (ev.clientX - r.left) / ESC, my = (ev.clientY - r.top) / ESC;
+  const a = alvo(mx, my);
+  if (a) arrasto = { ...a, mx, my, inicial: { ...caixas[a.nome] } };
+});
+
+addEventListener('mousemove', ev => {
+  if (!arrasto) return;
+  const r = palco.getBoundingClientRect();
+  const mx = (ev.clientX - r.left) / ESC, my = (ev.clientY - r.top) / ESC;
+  const dx = mx - arrasto.mx, dy = my - arrasto.my, i = arrasto.inicial;
+  const c = caixas[arrasto.nome];
+  if (arrasto.canto < 0) {
+    c.x = Math.max(0, Math.min(LARG - i.w, i.x + dx));
+    c.y = Math.max(0, Math.min(ALT - i.h, i.y + dy));
+  } else {
+    const esq = arrasto.canto === 0 || arrasto.canto === 2;
+    const cima = arrasto.canto < 2;
+    const x1 = esq ? Math.min(i.x + dx, i.x + i.w - 40) : i.x;
+    const x2 = esq ? i.x + i.w : Math.max(i.x + i.w + dx, i.x + 40);
+    const y1 = cima ? Math.min(i.y + dy, i.y + i.h - 40) : i.y;
+    const y2 = cima ? i.y + i.h : Math.max(i.y + i.h + dy, i.y + 40);
+    c.x = Math.max(0, x1); c.y = Math.max(0, y1);
+    c.w = Math.min(LARG, x2) - c.x; c.h = Math.min(ALT, y2) - c.y;
+  }
+  desenhar();
+});
+
+addEventListener('mouseup', () => { arrasto = null; });
+
+document.getElementById('salvar').addEventListener('click', async () => {
+  const resp = await fetch('/api/salvar', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cam: caixas.cam, conteudo: caixas.conteudo }),
+  });
+  const r = await resp.json();
+  document.getElementById('recado').textContent = r.ok ? 'Salvo. Pode fechar e processar.' : 'Falhou.';
+});
+
+(async () => {
+  dados = await (await fetch('/api/dados')).json();
+  caixas = { cam: { ...dados.cam }, conteudo: { ...dados.conteudo } };
+  document.getElementById('canal').textContent = dados.canal;
+  document.getElementById('arquivo').textContent = dados.video;
+  const barra = document.getElementById('frames');
+  imgs = await Promise.all(dados.frames.map(src => new Promise(ok => {
+    const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = src;
+  })));
+  dados.frames.forEach((_, i) => {
+    const b = document.createElement('button');
+    b.textContent = 'frame ' + (i + 1);
+    b.onclick = () => { atual = i; [...barra.children].forEach((x, j) => x.classList.toggle('on', i === j)); desenhar(); };
+    barra.appendChild(b);
+  });
+  barra.children[0].classList.add('on');
+  desenhar();
+})();
+</script>

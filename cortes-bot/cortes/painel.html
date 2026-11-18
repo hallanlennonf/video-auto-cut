@@ -4,96 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Painel de cortes</title>
-<style>
-  :root {
-    --bg: #f6f5f1; --surface: #ffffff; --text: #1d1d1b; --muted: #6b6a64; --border: #dedcd4;
-    --accent: #5b4fd6; --accent-bg: #eceafd; --ok: #2f7d32; --ok-bg: #e7f3e4; --bad: #b3261e; --bad-bg: #fbe9e7;
-    --warn: #8a5a00; --warn-bg: #fdf1dc; --chip: #efeee9; --overlay: rgba(20, 20, 18, .45);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #161615; --surface: #201f1d; --text: #ecebe6; --muted: #a09e96; --border: #3a3935;
-      --accent: #9d94f2; --accent-bg: #2a2742; --ok: #8fd18f; --ok-bg: #1f3320; --bad: #f2a29a; --bad-bg: #3a1f1c;
-      --warn: #f0c46b; --warn-bg: #3a2e15; --chip: #2c2b28; --overlay: rgba(0, 0, 0, .6); }
-  }
-  * { box-sizing: border-box; }
-  [hidden] { display: none !important; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
-  a { color: var(--accent); }
-  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--border); padding: 10px 16px; }
-  .topo { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
-  h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  nav { display: flex; gap: 4px; }
-  nav a { text-decoration: none; color: var(--muted); padding: 4px 12px; border-radius: 8px; }
-  nav a[aria-current="page"] { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
-  .barra { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 8px; }
-  select, button, input, textarea { font: inherit; color: var(--text); }
-  select, input, textarea { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
-  button { cursor: pointer; border-radius: 8px; padding: 6px 12px; border: 1px solid var(--border); background: var(--chip); }
-  button.primario { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button:disabled { opacity: .5; cursor: default; }
-  .filtros { display: flex; gap: 6px; flex-wrap: wrap; }
-  .filtros button { border-radius: 999px; padding: 4px 12px; border-color: transparent; }
-  .filtros button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-  .contagem { color: var(--muted); font-size: 13px; margin-left: auto; }
-  main { padding: 16px; max-width: 1500px; margin: 0 auto; }
-  .grade { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: grid; grid-template-columns: 150px 1fr; }
-  .card.aprovado { border-color: var(--ok); }
-  .card.rejeitado { opacity: .6; }
-  video { width: 150px; height: 267px; object-fit: cover; background: #000; display: block; }
-  .info { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .badge { background: var(--chip); border-radius: 6px; padding: 0 6px; }
-  .fmt-tiktok, .fmt-compilacao { color: var(--accent); }
-  .info input, .info textarea { width: 100%; }
-  textarea { resize: vertical; min-height: 54px; }
-  .motivo { font-size: 12px; color: var(--muted); font-style: italic; }
-  .acoes { display: flex; gap: 6px; margin-top: auto; }
-  .acoes button { flex: 1; }
-  .acoes .aprovar[aria-pressed="true"] { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
-  .acoes .rejeitar[aria-pressed="true"] { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
-  .pubs { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
-  .salvo { font-size: 12px; color: var(--ok); min-height: 18px; }
-  details { font-size: 12px; color: var(--muted); }
-  .vazio { color: var(--muted); padding: 40px 16px; text-align: center; }
-  .pill { display: inline-block; border-radius: 999px; padding: 0 8px; font-size: 12px; background: var(--chip); }
-  .st-agendado { background: var(--accent-bg); color: var(--accent); }
-  .st-enviando { background: var(--warn-bg); color: var(--warn); }
-  .st-publicado { background: var(--ok-bg); color: var(--ok); }
-  .st-erro { background: var(--bad-bg); color: var(--bad); }
-  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 14px; }
-  th { font-size: 12px; color: var(--muted); font-weight: 600; }
-  td .erro { color: var(--bad); font-size: 12px; }
-  td button { padding: 2px 8px; font-size: 13px; margin: 0 4px 4px 0; }
-  .tabela { overflow-x: auto; }
-  .secao { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
-  .secao h2 { font-size: 16px; margin: 0 0 8px; }
-  .secao p { margin: 4px 0 10px; color: var(--muted); font-size: 14px; }
-  .linha { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .conta { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border); }
-  .conta:first-of-type { border-top: 0; }
-  .conta .nome { font-weight: 600; }
-  .aviso { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
-  label.chk { display: inline-flex; gap: 6px; align-items: center; margin-right: 12px; font-size: 14px; }
-  dialog { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); padding: 0; width: min(560px, calc(100vw - 32px)); }
-  dialog::backdrop { background: var(--overlay); }
-  .dlg { padding: 16px 18px; display: grid; gap: 12px; }
-  .dlg h2 { margin: 0; font-size: 17px; }
-  .dlg fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px 10px; margin: 0; }
-  .dlg legend { font-size: 13px; color: var(--muted); padding: 0 4px; }
-  .dlg .opcao { display: flex; gap: 8px; align-items: center; padding: 4px 0; }
-  .dlg .opcao small { color: var(--muted); }
-  .dlg .rodape { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
-  .dlg .msg { color: var(--bad); font-size: 13px; min-height: 18px; }
-  @media (max-width: 420px) { .grade { grid-template-columns: 1fr; } .card { grid-template-columns: 1fr; } video { width: 100%; height: auto; aspect-ratio: 9/16; } .contagem { margin-left: 0; } }
-</style>
+<link rel="stylesheet" href="/estilo.css">
 </head>
 <body>
 <header>
   <div class="topo">
-    <h1>Painel de cortes</h1>
+    <h1>Cortes<span class="sub">Vice City</span></h1>
     <nav aria-label="Seções">
+      <a href="#lives" data-aba="lives">Lives</a>
       <a href="#revisao" data-aba="revisao">Revisão</a>
       <a href="#fila" data-aba="fila">Fila</a>
       <a href="#contas" data-aba="contas">Contas</a>
@@ -118,6 +36,24 @@
 </header>
 
 <main>
+  <section id="aba-lives" hidden>
+    <div class="escolha">
+      <div class="linha">
+        <select id="lv-canal" aria-label="Streamer"></select>
+        <button id="lv-recarregar">Buscar VODs</button>
+        <button id="lv-enquadrar">Ajustar enquadramento</button>
+        <span class="contagem" id="lv-recado"></span>
+      </div>
+      <div class="opcoes" role="group" aria-label="Opções do processamento">
+        <label><input type="checkbox" value="--sem-whisper"> sem legendas (mais rápido)</label>
+        <label><input type="checkbox" value="--sem-ia"> sem IA</label>
+        <label><input type="checkbox" value="--sem-tiktok"> só cortes curtos</label>
+        <label><input type="checkbox" value="--sem-render"> só listar momentos</label>
+      </div>
+      <div id="lv-trabalho"></div>
+      <div id="lv-lista"><p class="vazio">Escolha o streamer e clique em Buscar VODs.</p></div>
+    </div>
+  </section>
   <section id="aba-revisao"><div class="grade" id="lista"><p class="vazio">Carregando…</p></div></section>
   <section id="aba-fila" hidden><div id="fila"></div></section>
   <section id="aba-contas" hidden><div id="contas"></div></section>
@@ -165,16 +101,17 @@ async function api(url, corpo) {
 // ---------------------------------------------------------------- abas
 function abaAtual() { return (location.hash.slice(1) || "revisao").split("?")[0]; }
 async function mostrarAba() {
-  const aba = ["revisao", "fila", "contas"].includes(abaAtual()) ? abaAtual() : "revisao";
+  const aba = ["lives", "revisao", "fila", "contas"].includes(abaAtual()) ? abaAtual() : "revisao";
   document.querySelectorAll("nav a").forEach(a => {
     if (a.dataset.aba === aba) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  for (const n of ["revisao", "fila", "contas"]) $(`#aba-${n}`).hidden = n !== aba;
+  for (const n of ["lives", "revisao", "fila", "contas"]) $(`#aba-${n}`).hidden = n !== aba;
   $("#barra-revisao").hidden = aba !== "revisao";
   E = await api("/api/estado");
   if (aba === "revisao") await carregarCortes();
   if (aba === "fila") await desenharFila();
   if (aba === "contas") desenharContas();
+  if (aba === "lives") iniciarLives();
 }
 window.addEventListener("hashchange", mostrarAba);
 
@@ -202,17 +139,42 @@ function pubsHtml(c) {
     ${p.url && p.url.startsWith("http") ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">ver</a>` : p.status === "agendado" ? "· " + quando(p.quando) : ""}</span>`).join("")}</div>`;
 }
 
+const mb = b => b ? (b / 1048576).toFixed(1) + " MB" : "";
+
 function card(c) {
+  const t = c.capa_t ?? 0;
   return `<article class="card ${c.status}" data-id="${esc(c.id)}">
-    <video src="/video/${encodeURI(c.id)}" controls preload="metadata" playsinline></video>
+    <div class="palco">
+      <div class="fone">
+        <video src="/video/${encodeURI(c.id)}" controls preload="metadata" playsinline></video>
+      </div>
+      <div class="capa">
+        <img class="capa-img" alt="Capa do corte" src="/capa/${encodeURI(c.id)}?t=${t}">
+        <div class="capa-lado">
+          <span class="rotulo">Capa</span>
+          <span class="motivo capa-t">${t > 0 ? "em " + t.toFixed(1) + "s" : "primeiro quadro"}</span>
+          <button class="capa-usar" type="button">Usar o quadro atual</button>
+          <button class="enquadrar" type="button">Ajustar enquadramento…</button>
+        </div>
+      </div>
+    </div>
     <div class="info">
       <div class="meta"><span class="badge">${esc(c.canal)}</span>
         <span class="badge fmt-${c.formato}">${FORMATOS[c.formato]}${c.partes ? ` · ${c.partes} partes` : ""}</span>
         <span>${hhmmss(c.inicio)} · ${c.duracao}s</span>
+        ${c.largura ? `<span>${c.largura}×${c.altura}</span>` : ""}
+        <span>${mb(c.bytes)}</span>
         ${c.nota_ia != null ? `<span class="badge">IA ${c.nota_ia}/10</span>` : ""}</div>
-      <input class="titulo" maxlength="100" placeholder="Título" value="${esc(c.titulo)}" aria-label="Título">
-      <textarea class="descricao" placeholder="Descrição" aria-label="Descrição">${esc(c.descricao)}</textarea>
-      <input class="hashtags" placeholder="hashtags separadas por espaço" value="${esc((c.hashtags||[]).join(" "))}" aria-label="Hashtags">
+      <label class="campo"><span class="rotulo">Título <b class="conta-letras">${(c.titulo||"").length}/100</b></span>
+        <input class="titulo" maxlength="100" placeholder="O que acontece no corte" value="${esc(c.titulo)}" aria-label="Título"></label>
+      <label class="campo"><span class="rotulo">Descrição</span>
+        <textarea class="descricao" placeholder="Uma ou duas frases que completem o título" aria-label="Descrição">${esc(c.descricao)}</textarea></label>
+      <label class="campo"><span class="rotulo">Hashtags</span>
+        <input class="hashtags" placeholder="gta6 alanzoka cortes" value="${esc((c.hashtags||[]).join(" "))}" aria-label="Hashtags"></label>
+      <div class="linha-ia">
+        <button class="ia" type="button">Gerar com IA</button>
+        <span class="motivo ia-recado"></span>
+      </div>
       ${c.motivo_ia ? `<div class="motivo">IA: ${esc(c.motivo_ia)}</div>` : ""}
       ${c.texto ? `<details><summary>Transcrição</summary>${esc(c.texto)}</details>` : ""}
       ${pubsHtml(c)}
@@ -222,6 +184,25 @@ function card(c) {
       </div>
       <div class="salvo" aria-live="polite"></div>
     </div></article>`;
+}
+
+async function rerender(el, c) {
+  const recado = $(".salvo", el);
+  const r = await api("/api/rerender/" + encodeURI(c.id), {});
+  if (!r.ok) { recado.textContent = r.erro; return; }
+  recado.textContent = "re-renderizando…";
+  for (let i = 0; i < 300; i++) {                      // ffmpeg em crf 17 leva uns minutos
+    await new Promise(ok => setTimeout(ok, 3000));
+    const t = await api("/api/trabalho");
+    if (!t.atual || t.atual.rodando) continue;
+    if (t.atual.erro) { recado.textContent = t.atual.erro; return; }
+    recado.textContent = "pronto";
+    const v = $("video", el);
+    v.src = `/video/${encodeURI(c.id)}?r=${Date.now()}`;
+    $(".capa-img", el).src = `/capa/${encodeURI(c.id)}?t=${c.capa_t ?? 0}&r=${Date.now()}`;
+    return;
+  }
+  recado.textContent = "demorou demais; veja o log na aba Lives";
 }
 
 function camposDoCard(el) {
@@ -235,6 +216,56 @@ async function salvar(el, mudancas) {
   $(".salvo", el).textContent = r.ok ? "Salvo" : "Erro ao salvar";
   return r.ok;
 }
+
+document.addEventListener("input", e => {
+  const el = e.target.closest(".card");
+  if (el && e.target.classList.contains("titulo")) {
+    const n = e.target.value.length;
+    const b = $(".conta-letras", el);
+    b.textContent = `${n}/100`;
+    b.classList.toggle("apertado", n > 80);
+  }
+});
+
+document.addEventListener("click", async e => {
+  const el = e.target.closest(".card"); if (!el) return;
+  const c = cortes.find(x => x.id === el.dataset.id);
+  if (e.target.classList.contains("capa-usar")) {
+    const t = Math.max(0, $("video", el).currentTime || 0);
+    if (!await salvar(el, { capa_t: t })) return;
+    $(".capa-img", el).src = `/capa/${encodeURI(c.id)}?t=${t}&r=${Date.now()}`;
+    $(".capa-t", el).textContent = t > 0 ? `em ${t.toFixed(1)}s` : "primeiro quadro";
+  }
+  if (e.target.classList.contains("enquadrar")) {
+    const b = e.target, recado = $(".salvo", el);
+    b.disabled = true; recado.textContent = "abrindo…";
+    const r = await api("/api/enquadrar", { canal: c.canal, corte_id: c.id });
+    b.disabled = false;
+    if (!r.ok) { recado.textContent = r.erro; return; }
+    recado.textContent = "";
+    window.open(r.url, "enquadramento");
+    if (confirm("Ajuste e salve na aba que abriu.
+
+O enquadramento novo vale para os próximos cortes — este aqui já está renderizado. Re-renderizar este corte agora?")) {
+      rerender(el, c);
+    }
+  }
+  if (e.target.classList.contains("rerender")) rerender(el, c);
+  if (e.target.classList.contains("ia")) {
+    const b = e.target, recado = $(".ia-recado", el);
+    b.disabled = true; recado.textContent = "escrevendo…";
+    const r = await api("/api/legenda/" + encodeURI(c.id), {});
+    b.disabled = false;
+    if (!r.ok) { recado.textContent = r.erro || "não deu certo"; return; }
+    recado.textContent = "";
+    $(".titulo", el).value = r.titulo;
+    $(".descricao", el).value = r.descricao;
+    $(".hashtags", el).value = (r.hashtags || []).join(" ");
+    $(".conta-letras", el).textContent = `${r.titulo.length}/100`;
+    Object.assign(c, r);
+    $(".salvo", el).textContent = "Salvo";
+  }
+});
 
 document.addEventListener("change", e => {
   const el = e.target.closest(".card"); if (!el) return;
@@ -381,6 +412,84 @@ $("#contas").addEventListener("click", async e => {
     await api(`/api/contas/${el.dataset.id}/remover`, {});
     E = await api("/api/estado"); desenharContas();
   }
+});
+
+// ---------------------------------------------------------------- lives
+let lvCarregado = false, lvTimer = null;
+
+function iniciarLives() {
+  const sel = $("#lv-canal");
+  if (!lvCarregado) {
+    sel.innerHTML = Object.entries(E.canais).map(([n, c]) =>
+      `<option value="${esc(n)}">${esc(n)} → ${esc(c.destino)}</option>`).join("");
+    lvCarregado = true;
+    buscarVods(false);
+  }
+  verTrabalho();
+}
+
+async function buscarVods(atualizar) {
+  const canal = $("#lv-canal").value;
+  if (!canal) return;
+  $("#lv-recado").textContent = "procurando…";
+  const r = await api(`/api/vods?canal=${encodeURIComponent(canal)}${atualizar ? "&atualizar=1" : ""}`);
+  if (r.erro) {
+    $("#lv-recado").textContent = "";
+    $("#lv-lista").innerHTML = `<p class="vazio">Não deu para listar: ${esc(r.erro)}</p>`;
+    return;
+  }
+  $("#lv-recado").textContent = `${r.vods.length} VODs`;
+  $("#lv-lista").innerHTML = r.vods.length ? r.vods.map(v => `
+    <article class="vod">
+      <div class="dur">${v.duracao ? hhmmss(v.duracao).replace(/:\d\d$/, "") : "—"}</div>
+      <div class="corpo">
+        <h3>${esc(v.titulo || "(sem título)")}</h3>
+        <a class="motivo" href="${esc(v.url)}" target="_blank" rel="noreferrer">${esc(v.url)}</a>
+      </div>
+      <button class="primario" data-url="${esc(v.url)}" data-titulo="${esc(v.titulo || "")}">Processar</button>
+    </article>`).join("") : `<p class="vazio">Nenhum VOD arquivado nesse canal.</p>`;
+}
+
+async function verTrabalho() {
+  const t = await api("/api/trabalho");
+  const caixa = $("#lv-trabalho");
+  if (!t.atual) { caixa.innerHTML = ""; return; }
+  const a = t.atual;
+  const estado = a.erro ? `<b class="ruim">falhou</b>` : a.rodando
+    ? `<b class="andando">${esc(a.passo)}<span class="pontos">…</span></b>` : `<b class="bom">pronto</b>`;
+  const min = Math.round(((a.fim || Date.now() / 1000) - a.inicio) / 60);
+  caixa.innerHTML = `<div class="trabalho ${a.erro ? "erro" : a.rodando ? "rodando" : "feito"}">
+    <div class="linha"><span>${esc(a.titulo || a.url)}</span>${estado}<span class="motivo">${min} min</span></div>
+    ${a.erro ? `<p class="motivo">${esc(a.erro)}</p>` : ""}
+    ${!a.rodando && !a.erro ? `<p class="motivo">Os cortes estão na aba <a href="#revisao">Revisão</a>.</p>` : ""}
+    <pre class="log">${esc(t.log.slice(-14).join(String.fromCharCode(10)))}</pre>
+  </div>`;
+  clearTimeout(lvTimer);
+  if (a.rodando && abaAtual() === "lives") lvTimer = setTimeout(verTrabalho, 2000);
+}
+
+$("#lv-canal").addEventListener("change", () => buscarVods(false));
+$("#lv-recarregar").addEventListener("click", () => buscarVods(true));
+$("#lv-enquadrar").addEventListener("click", async e => {
+  e.target.disabled = true;
+  const r = await api("/api/enquadrar", { canal: $("#lv-canal").value });
+  e.target.disabled = false;
+  if (!r.ok) { $("#lv-recado").textContent = r.erro; return; }
+  $("#lv-recado").textContent = "medindo em " + r.video;
+  window.open(r.url, "enquadramento");
+});
+$("#lv-lista").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-url]");
+  if (!b) return;
+  if (!confirm(`Processar "${b.dataset.titulo || b.dataset.url}"?
+
+Baixa o áudio da live inteira e gera os cortes. Pode levar bastante tempo.`)) return;
+  b.disabled = true;
+  const opcoes = [...document.querySelectorAll("#aba-lives .opcoes input:checked")].map(i => i.value);
+  const r = await api("/api/processar", { canal: $("#lv-canal").value, url: b.dataset.url, titulo: b.dataset.titulo, opcoes });
+  b.disabled = false;
+  if (!r.ok) { alert(r.erro); return; }
+  verTrabalho();
 });
 
 mostrarAba();

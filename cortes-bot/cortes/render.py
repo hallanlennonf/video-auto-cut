@@ -1,6 +1,8 @@
 """Gera o corte vertical 1080x1920 com ffmpeg.
 
-- Com facecam configurada: facecam em cima (1080x640) + jogo embaixo (1080x1280).
+- Com facecam configurada: facecam em cima, uma faixa preta no meio (onde entra a legenda)
+  e o jogo embaixo, cortado o minimo possivel - so o bastante para nao sobrar faixa grossa
+  demais e para tirar a propria facecam do quadro do jogo.
 - Sem facecam: vídeo inteiro centralizado sobre um fundo desfocado do próprio vídeo.
 - Crédito do streamer sempre na tela.
 """
@@ -17,12 +19,52 @@ def _texto_ffmpeg(s: str) -> str:
     return s.replace("\\", "\\\\").replace(":", "\\:").replace("'", "’").replace("%", "\\%")
 
 
-def posicao_legenda(facecam: dict | None) -> int:
-    """Centro vertical da legenda: na emenda câmera/jogo, ou no terço inferior sem facecam."""
-    return 640 if facecam else 1380
+FAIXA = 220          # altura da faixa preta entre a cam e o jogo: e nela que a legenda fica
+FONTE_W, FONTE_H = 1920, 1080   # resolucao do VOD de origem
 
 
-def _filtro(facecam: dict | None, credito: str, legenda: str | None = None) -> str:
+def _layout(facecam: dict, conteudo: dict | None = None) -> dict:
+    """Mede o corte vertical: cam em cima na largura inteira, faixa preta no meio, jogo embaixo.
+
+    Com `conteudo` (retangulo escolhido no `cortes enquadrar`), manda o que o usuario desenhou e
+    a faixa e o que sobra. Sem ele, o jogo e cortado so o necessario para encher a altura que
+    sobra da FAIXA padrao, fugindo da propria facecam para o rosto nao aparecer duas vezes."""
+    h_cam = round(1080 * facecam["h"] / facecam["w"])
+    h_cam += h_cam % 2                      # libx264 exige altura par
+    if conteudo:
+        h_jogo = round(1080 * conteudo["h"] / conteudo["w"])
+        h_jogo -= h_jogo % 2
+        h_jogo = min(h_jogo, 1920 - h_cam)
+        return {"h_cam": h_cam, "h_jogo": h_jogo, "faixa": 1920 - h_cam - h_jogo,
+                "largura": conteudo["w"], "altura": conteudo["h"],
+                "x": conteudo["x"], "y": conteudo["y"]}
+    h_jogo = 1920 - h_cam - FAIXA
+    h_jogo -= h_jogo % 2
+    largura = min(FONTE_W, round(1080 * FONTE_H / h_jogo))   # largura do recorte no video original
+    # o recorte fica o mais centralizado possivel: so sai do centro o necessario para
+    # nao pegar a facecam (senao o rosto aparece duas vezes e a cena fica torta)
+    centro = (FONTE_W - largura) // 2
+    livres = [(ini, fim) for ini, fim in
+              ((0, facecam["x"]), (facecam["x"] + facecam["w"], FONTE_W)) if fim - ini >= largura]
+    if livres:
+        x = min((min(max(centro, ini), fim - largura) for ini, fim in livres), key=lambda v: abs(v - centro))
+    else:
+        x = centro                           # nao cabe fugindo da cam: centraliza no quadro todo
+    return {"h_cam": h_cam, "h_jogo": h_jogo, "faixa": FAIXA,
+            "largura": largura, "altura": FONTE_H, "x": x, "y": 0}
+
+
+def posicao_legenda(canal: dict | None) -> int:
+    """Centro vertical da legenda: no meio da faixa preta, ou no terço inferior sem facecam."""
+    facecam = (canal or {}).get("facecam")
+    if not facecam:
+        return 1380
+    L = _layout(facecam, (canal or {}).get("conteudo"))
+    return L["h_cam"] + L["faixa"] // 2
+
+
+def _filtro(facecam: dict | None, credito: str, legenda: str | None = None,
+            conteudo: dict | None = None) -> str:
     cred = (
         f"drawtext=fontfile='{FONTE}':text='{_texto_ffmpeg(credito)}':fontsize=44:fontcolor=white:"
         "borderw=4:bordercolor=black@0.85:x=(w-text_w)/2:y=h-200"
@@ -31,11 +73,13 @@ def _filtro(facecam: dict | None, credito: str, legenda: str | None = None) -> s
         cred = f"subtitles=filename='{legenda}',{cred}"
     if facecam:
         fx, fy, fw, fh = (facecam[k] for k in ("x", "y", "w", "h"))
+        L = _layout(facecam, conteudo)
         return (
             f"[0:v]split=2[a][b];"
-            f"[a]crop={fw}:{fh}:{fx}:{fy},scale=1080:640:force_original_aspect_ratio=increase,crop=1080:640[cam];"
-            f"[b]crop=ih*1080/1280:ih,scale=1080:1280[jogo];"
-            f"[cam][jogo]vstack=inputs=2,setsar=1,{cred}[v]"
+            f"[a]crop={fw}:{fh}:{fx}:{fy},scale=1080:{L['h_cam']},"
+            f"pad=1080:{L['h_cam'] + L['faixa']}:0:0:black[topo];"
+            f"[b]crop={L['largura']}:{L['altura']}:{L['x']}:{L['y']},scale=1080:{L['h_jogo']}[jogo];"
+            f"[topo][jogo]vstack=inputs=2,setsar=1,{cred}[v]"
         )
     return (
         f"[0:v]split=2[a][b];"
@@ -71,8 +115,8 @@ def concatenar(partes: list[Path], saida: Path) -> Path:
         config.ffmpeg(), "-y", "-v", "error", *entradas,
         "-filter_complex", f"{rotulos}concat=n={len(partes)}:v=1:a=1[v][a]",
         "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
-        "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-movflags", "+faststart",
+        "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-r", "30",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart",
         str(saida),
     ]
     subprocess.run(cmd, check=True)
@@ -89,10 +133,11 @@ def renderizar(video: Path, inicio: float, fim: float, saida: Path, canal: dict,
     cmd = [
         config.ffmpeg(), "-y", "-v", "error",
         "-ss", f"{inicio:.2f}", "-to", f"{fim:.2f}", "-i", str(Path(video).resolve()),
-        "-filter_complex", _filtro(canal.get("facecam"), canal.get("credito", ""), legenda.name if legenda else None),
+        "-filter_complex", _filtro(canal.get("facecam"), canal.get("credito", ""),
+                                   legenda.name if legenda else None, canal.get("conteudo")),
         "-map", "[v]", "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", "30",
-        "-c:a", "aac", "-b:a", "160k", "-ar", "48000",
+        "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-r", "30",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
         "-movflags", "+faststart",
         str(saida),
     ]

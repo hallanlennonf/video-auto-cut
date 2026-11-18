@@ -6,6 +6,7 @@ pyyaml
 numpy
 faster-whisper
 anthropic
+pydantic
 google-api-python-client
 google-auth-oauthlib
 tzdata

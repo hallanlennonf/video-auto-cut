@@ -1,5 +1,6 @@
 """Painel local de revisão e publicação: http://localhost:8800
 
+- Lives: lista os VODs recentes do streamer e processa o escolhido com um clique.
 - Revisão: assiste aos cortes de todos os canais, edita título/descrição/hashtags, aprova ou rejeita.
 - Ao aprovar: escolhe em quais contas publicar e quando (próximo horário livre, agora ou data/hora).
 - Fila: acompanha, cancela, adianta ou tenta de novo cada publicação.
@@ -11,12 +12,15 @@ uma página qualquer aberta no navegador não consiga publicar nada em seu nome.
 import html as html_mod
 import json
 import re
+import shutil
+import subprocess
 import threading
+import unicodedata
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import config, contas, fila
+from . import config, contas, fila, trabalho
 
 _trava = threading.Lock()
 SEGURO = re.compile(r"^[\w.-]+$")
@@ -24,6 +28,29 @@ LISTAS = {"candidatos": "curto", "longos": "tiktok", "compilacoes": "compilacao"
 
 
 # ------------------------------------------------------------------ cortes
+
+_fichas: dict[tuple, dict] = {}
+
+
+def ficha(p: Path) -> dict:
+    """Tamanho e resolucao do mp4. O ffprobe custa caro para rodar a cada listagem,
+    entao guardamos por (caminho, mtime): o arquivo so muda se for re-renderizado."""
+    st = p.stat()
+    chave = (str(p), st.st_mtime_ns)
+    if (f := _fichas.get(chave)) is not None:
+        return f
+    f = {"bytes": st.st_size, "largura": None, "altura": None}
+    try:
+        saida = subprocess.run(
+            [config.ffmpeg(), "-hide_banner", "-i", str(p)], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=20).stderr
+        if m := re.search(r"Video:.*?,\s(\d{2,5})x(\d{2,5})", saida):
+            f["largura"], f["altura"] = int(m.group(1)), int(m.group(2))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    _fichas[chave] = f
+    return f
+
 
 def _arquivos_json(dados: Path) -> list[Path]:
     return sorted(dados.glob("*/candidatos/*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -60,6 +87,8 @@ def listar(dados: Path) -> list[dict]:
                     "descricao": rev.get("descricao", ia.get("descricao", "")),
                     "hashtags": rev.get("hashtags", ia.get("hashtags", [])),
                     "status": rev.get("status", "pendente"),
+                    "capa_t": rev.get("capa_t"),
+                    **ficha(config.absoluto(c["arquivo"])),
                     "publicacoes": publicacoes.get(ident, []),
                 })
     return saida
@@ -72,12 +101,65 @@ def _localizar(dados: Path, ident: str) -> tuple[Path, str, int]:
     return dados / canal / "candidatos" / f"{live}.json", lista, int(idx)
 
 
+def _slug(texto: str, limite: int = 48) -> str:
+    t = unicodedata.normalize("NFKD", texto.lower())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    t = re.sub(r"[^a-z0-9]+", "-", t).strip("-")
+    return t[:limite].strip("-")
+
+
+def exportar(canal: str, c: dict) -> str | None:
+    """Copia o corte aprovado para a pasta de prontos, com a legenda num .txt ao lado.
+
+    Serve enquanto as contas de publicacao nao estao vinculadas: o video e o texto ficam juntos,
+    prontos para subir a mao. Devolve o nome do arquivo copiado."""
+    destino_pasta = config.pasta_prontos(config.carregar())
+    if not destino_pasta or not c.get("arquivo"):
+        return None
+    origem = config.absoluto(c["arquivo"])
+    if not origem.exists():
+        return None
+    rev = c.get("revisao") or {}
+    titulo = rev.get("titulo") or (c.get("ia") or {}).get("titulo") or ""
+    nome = f"{canal}-{int(c['inicio'])}" + (f"-{_slug(titulo)}" if titulo else "")
+    destino_pasta.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(origem, destino_pasta / f"{nome}.mp4")
+    hashtags = " ".join("#" + h for h in rev.get("hashtags", []))
+    legenda = [x for x in (titulo, rev.get("descricao", ""), hashtags) if x]
+    (destino_pasta / f"{nome}.txt").write_text("\n".join(legenda) + "\n", encoding="utf-8")
+    return f"{nome}.mp4"
+
+
+def capa_bytes(video: Path, t: float, largura: int = 540) -> bytes:
+    """Um quadro do corte, em JPEG. E o mesmo quadro que vira a capa no arquivo exportado."""
+    r = subprocess.run(
+        [config.ffmpeg(), "-v", "error", "-ss", f"{max(0.0, t):.2f}", "-i", str(video),
+         "-frames:v", "1", "-vf", f"scale={largura}:-2", "-f", "mjpeg", "-q:v", "3", "-"],
+        capture_output=True, timeout=30)
+    if not r.stdout:
+        raise RuntimeError("não consegui tirar o quadro nesse instante")
+    return r.stdout
+
+
+def _apagar_exportado(nome: str) -> None:
+    pasta = config.pasta_prontos(config.carregar())
+    if not pasta or not nome:
+        return
+    for arq in (pasta / nome, (pasta / nome).with_suffix(".txt"), (pasta / nome).with_suffix(".jpg")):
+        try:
+            arq.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def atualizar(dados: Path, ident: str, mudancas: dict) -> dict:
     arq, lista, idx = _localizar(dados, ident)
     with _trava:
         d = json.loads(arq.read_text(encoding="utf-8"))
         c = d[lista][idx]
         rev = c.setdefault("revisao", {})
+        if "capa_t" in mudancas:
+            rev["capa_t"] = max(0.0, float(mudancas["capa_t"]))
         for k in ("titulo", "descricao", "status"):
             if k in mudancas:
                 rev[k] = str(mudancas[k])[:500]
@@ -85,10 +167,99 @@ def atualizar(dados: Path, ident: str, mudancas: dict) -> dict:
             rev["hashtags"] = [str(h).strip().lstrip("#") for h in mudancas["hashtags"] if str(h).strip()][:10]
         if rev.get("status") not in ("pendente", "aprovado", "rejeitado"):
             rev["status"] = "pendente"
+        # aprovado -> copia para a pasta de prontos; desaprovado -> tira de la
+        if rev["status"] == "aprovado":
+            if nome := exportar(d.get("canal", ""), c):
+                rev["exportado"] = nome
+        elif (antigo := rev.pop("exportado", None)):
+            _apagar_exportado(antigo)
         tmp = arq.with_suffix(".tmp")
         tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(arq)
         return c
+
+
+def gerar_legenda(dados: Path, ident: str) -> dict:
+    """Pede o título/descrição/hashtags à IA e já salva no corte."""
+    from . import ia
+
+    arq, lista, idx = _localizar(dados, ident)
+    d = json.loads(arq.read_text(encoding="utf-8"))
+    c = d[lista][idx]
+    cfg = config.carregar()
+    canal = cfg["canais"].get(ident.split("/")[0], {})
+    if lista == "compilacoes":   # a compilação não tem palavras próprias: junta as das partes
+        por_id = {x.get("id"): x for x in d.get("candidatos", [])}
+        partes = [por_id[i] for i in c.get("partes", []) if i in por_id]
+        c = {**c, "palavras": [p for x in partes for p in x.get("palavras", [])],
+             "inicio": min((x["inicio"] for x in partes), default=c["inicio"]),
+             "fim": max((x["fim"] for x in partes), default=c["fim"])}
+    legenda = ia.legenda_para(c, canal, cfg)
+    atualizar(dados, ident, legenda)
+    return {"ok": True, **legenda}
+
+
+# ------------------------------------------------------------- enquadramento
+
+_oficina: dict = {}
+
+
+def trecho_bruto(dados: Path, ident: str) -> Path | None:
+    """O pedaço de VOD de onde o corte foi renderizado. É o melhor frame para enquadrar:
+    é exatamente a cena que o revisor está olhando."""
+    arq, lista, idx = _localizar(dados, ident)
+    c = json.loads(arq.read_text(encoding="utf-8"))[lista][idx]
+    if not c.get("arquivo"):
+        return None
+    destino = config.absoluto(c["arquivo"])
+    bruto = destino.parent.parent.parent / "vods" / "trechos" / f"{destino.stem}_bruto.mp4"
+    return bruto if bruto.exists() else None
+
+
+def abrir_oficina(dados: Path, nome_canal: str, video: Path, porta: int = 8810) -> str:
+    """Sobe (ou troca o vídeo d)a ferramenta de enquadramento, sem travar o painel."""
+    from . import enquadrar
+
+    if srv := _oficina.get("srv"):
+        srv.shutdown()
+        srv.server_close()
+    cfg = config.carregar()
+    srv = enquadrar.criar(video, nome_canal, config.canal(cfg, nome_canal), dados, porta)
+    _oficina["srv"] = srv
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return f"http://localhost:{porta}"
+
+
+def rerenderizar(dados: Path, ident: str) -> dict:
+    """Gera de novo o mp4 desse corte com o enquadramento atual, reaproveitando o trecho já baixado."""
+    from . import enquadrar, legendas, render
+
+    arq, lista, idx = _localizar(dados, ident)
+    d = json.loads(arq.read_text(encoding="utf-8"))
+    c = d[lista][idx]
+    if lista == "compilacoes":
+        raise ValueError("compilação é feita das partes: re-renderize os cortes que a compõem")
+    if not c.get("arquivo"):
+        raise ValueError("esse corte não tem vídeo renderizado")
+    destino = config.absoluto(c["arquivo"])
+    fonte = trecho_bruto(dados, ident)
+    if fonte is None:
+        raise ValueError("o trecho bruto desse corte não está mais em disco: reprocesse a live")
+    cfg = config.carregar()
+    canal = config.canal(cfg, d.get("canal", ident.split("/")[0]))
+    # o trecho de HLS guarda o tempo do VOD: o início dele é o deslocamento do corte
+    comeco = enquadrar.intervalo(fonte)[0]
+    ini, fim = c["inicio"] - comeco, c["fim"] - comeco
+    ass = None
+    if c.get("palavras"):
+        ass = legendas.gerar_ass(c["palavras"], c["inicio"], c["fim"], destino.with_suffix(".ass"),
+                                 render.posicao_legenda(canal))
+    render.renderizar(fonte, ini, fim, destino, canal, ass)
+    _fichas.clear()
+    rev = c.get("revisao") or {}
+    if rev.get("status") == "aprovado":   # o que já foi para prontos tem que acompanhar
+        exportar(d.get("canal", ""), c)
+    return {"arquivo": config.relativo(destino)}
 
 
 def caminho_video(dados: Path, ident: str) -> Path:
@@ -151,6 +322,7 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
     from . import pub_youtube
 
     pagina = Path(__file__).parent / "painel.html"
+    estilo = Path(__file__).parent / "estilo.css"
     hosts_ok = {f"localhost:{porta}", f"127.0.0.1:{porta}"}
     origens_ok = {f"http://{h}" for h in hosts_ok}
 
@@ -193,12 +365,41 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
             try:
                 if url.path in ("/", "/index.html"):
                     self._html(pagina.read_text(encoding="utf-8"))
+                elif url.path == "/estilo.css":
+                    corpo = estilo.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/css; charset=utf-8")
+                    self.send_header("Content-Length", str(len(corpo)))
+                    self.end_headers()
+                    self.wfile.write(corpo)
                 elif url.path == "/api/cortes":
                     self._json(listar(dados))
                 elif url.path == "/api/estado":
                     self._json(estado())
+                elif url.path == "/api/vods":
+                    q = parse_qs(url.query)
+                    nome = q.get("canal", [""])[0]
+                    if not SEGURO.match(nome or ""):
+                        raise ValueError("canal inválido")
+                    try:
+                        self._json({"vods": trabalho.vods(config.carregar(), nome,
+                                                          atualizar=q.get("atualizar", [""])[0] == "1")})
+                    except RuntimeError as e:
+                        self._json({"erro": str(e)}, 502)
+                elif url.path == "/api/trabalho":
+                    self._json(trabalho.estado())
                 elif url.path == "/api/fila":
                     self._json(sorted(fila.listar(), key=lambda i: i["agendado_para"], reverse=True))
+                elif url.path.startswith("/capa/"):
+                    q = parse_qs(url.query)
+                    quadro = capa_bytes(caminho_video(dados, unquote(url.path[len("/capa/"):])),
+                                        float(q.get("t", ["0"])[0]))
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/jpeg")
+                    self.send_header("Content-Length", str(len(quadro)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(quadro)
                 elif url.path.startswith("/video/"):
                     self._video(caminho_video(dados, unquote(url.path[len("/video/"):])))
                 elif url.path == "/oauth/youtube/iniciar":
@@ -217,7 +418,8 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                                    "Agora escolha, na aba Contas, para quais streamers ele é conta padrão.")
                 else:
                     self.send_error(404)
-            except (ValueError, KeyError, IndexError, FileNotFoundError) as e:
+            except (ValueError, KeyError, IndexError, FileNotFoundError, RuntimeError,
+                    subprocess.SubprocessError) as e:
                 if url.path.startswith("/oauth/"):
                     self._mensagem("Não deu certo", html_mod.escape(str(e)), 400)
                 else:
@@ -242,6 +444,39 @@ def servir(dados: Path, porta: int = 8800, trabalhador: bool = True) -> None:
                 elif caminho == "/api/publicar":
                     itens = publicar(dados, corpo)
                     self._json({"ok": True, "itens": itens})
+                elif caminho.startswith("/api/rerender/"):
+                    ident = caminho[len("/api/rerender/"):]
+                    bruto = trecho_bruto(dados, ident)
+                    if bruto is None:
+                        raise ValueError("o trecho bruto desse corte não está mais em disco")
+                    self._json({"ok": True, "atual": trabalho.comecar_funcao(
+                        "re-renderizando o corte", ident.split("/")[0],
+                        lambda log: str(rerenderizar(dados, ident)["arquivo"]))})
+                elif caminho == "/api/enquadrar":
+                    nome = str(corpo.get("canal") or "")
+                    if not SEGURO.match(nome):
+                        raise ValueError("canal inválido")
+                    if ident := corpo.get("corte_id"):
+                        video = trecho_bruto(dados, str(ident))
+                        if video is None:
+                            raise ValueError("o trecho bruto desse corte não está mais em disco")
+                    else:
+                        trechos = sorted((dados / nome / "vods" / "trechos").glob("*_bruto.mp4"),
+                                         key=lambda p: p.stat().st_mtime, reverse=True)
+                        if not trechos:
+                            raise ValueError(f"nenhum trecho de {nome} baixado ainda: processe um VOD primeiro")
+                        video = trechos[0]
+                    self._json({"ok": True, "url": abrir_oficina(dados, nome, video),
+                                "video": video.name})
+                elif caminho.startswith("/api/legenda/"):
+                    self._json(gerar_legenda(dados, caminho[len("/api/legenda/"):]))
+                elif caminho == "/api/processar":
+                    nome = str(corpo.get("canal") or "")
+                    if not SEGURO.match(nome):
+                        raise ValueError("canal inválido")
+                    self._json({"ok": True, "atual": trabalho.comecar(
+                        nome, str(corpo.get("url") or ""), str(corpo.get("titulo") or ""),
+                        list(corpo.get("opcoes") or []))})
                 elif caminho == "/api/contas/simulacao":
                     nome = str(corpo.get("nome") or "").strip()[:60] or "Conta de teste"
                     self._json({"ok": True, "conta": contas.adicionar("simulacao", nome)})
