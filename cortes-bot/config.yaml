@@ -52,8 +52,6 @@ whisper:
     - puta
     - meu deus
     - nossa
-    - mano
-    - velho
     - socorro
     - nao acredito
     - que isso
@@ -89,7 +87,7 @@ canais:
     credito: twitch.tv/alanzoka
     # Recorte da facecam no vídeo original (pixels, em 1920x1080).
     # Deixe null até medir; sem facecam o corte usa fundo desfocado.
-    facecam: {x: 4, y: 4, w: 428, h: 290}   # medido no VOD de 17/11/2026 (canto sup. esquerdo)
+    facecam: {x: 1489, y: 271, w: 420, h: 268}   # medido no VOD 2932200023 (canto sup. direito, sem a barra do "último sub")
 
   paulinholokobr:
     plataforma: kick
