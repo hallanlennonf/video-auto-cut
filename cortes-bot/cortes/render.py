@@ -23,13 +23,21 @@ FAIXA = 220          # altura da faixa preta entre a cam e o jogo: e nela que a 
 FONTE_W, FONTE_H = 1920, 1080   # resolucao do VOD de origem
 
 
-def _layout(facecam: dict) -> dict:
+def _layout(facecam: dict, conteudo: dict | None = None) -> dict:
     """Mede o corte vertical: cam em cima na largura inteira, faixa preta no meio, jogo embaixo.
 
-    O jogo e cortado so o necessario para encher a altura que sobra - quanto menor a faixa,
-    menos corte. O recorte foge da propria facecam, para o rosto nao aparecer duas vezes."""
+    Com `conteudo` (retangulo escolhido no `cortes enquadrar`), manda o que o usuario desenhou e
+    a faixa e o que sobra. Sem ele, o jogo e cortado so o necessario para encher a altura que
+    sobra da FAIXA padrao, fugindo da propria facecam para o rosto nao aparecer duas vezes."""
     h_cam = round(1080 * facecam["h"] / facecam["w"])
     h_cam += h_cam % 2                      # libx264 exige altura par
+    if conteudo:
+        h_jogo = round(1080 * conteudo["h"] / conteudo["w"])
+        h_jogo -= h_jogo % 2
+        h_jogo = min(h_jogo, 1920 - h_cam)
+        return {"h_cam": h_cam, "h_jogo": h_jogo, "faixa": 1920 - h_cam - h_jogo,
+                "largura": conteudo["w"], "altura": conteudo["h"],
+                "x": conteudo["x"], "y": conteudo["y"]}
     h_jogo = 1920 - h_cam - FAIXA
     h_jogo -= h_jogo % 2
     largura = min(FONTE_W, round(1080 * FONTE_H / h_jogo))   # largura do recorte no video original
@@ -42,17 +50,21 @@ def _layout(facecam: dict) -> dict:
         x = min((min(max(centro, ini), fim - largura) for ini, fim in livres), key=lambda v: abs(v - centro))
     else:
         x = centro                           # nao cabe fugindo da cam: centraliza no quadro todo
-    return {"h_cam": h_cam, "h_jogo": h_jogo, "largura": largura, "x": x}
+    return {"h_cam": h_cam, "h_jogo": h_jogo, "faixa": FAIXA,
+            "largura": largura, "altura": FONTE_H, "x": x, "y": 0}
 
 
-def posicao_legenda(facecam: dict | None) -> int:
+def posicao_legenda(canal: dict | None) -> int:
     """Centro vertical da legenda: no meio da faixa preta, ou no terço inferior sem facecam."""
+    facecam = (canal or {}).get("facecam")
     if not facecam:
         return 1380
-    return _layout(facecam)["h_cam"] + FAIXA // 2
+    L = _layout(facecam, (canal or {}).get("conteudo"))
+    return L["h_cam"] + L["faixa"] // 2
 
 
-def _filtro(facecam: dict | None, credito: str, legenda: str | None = None) -> str:
+def _filtro(facecam: dict | None, credito: str, legenda: str | None = None,
+            conteudo: dict | None = None) -> str:
     cred = (
         f"drawtext=fontfile='{FONTE}':text='{_texto_ffmpeg(credito)}':fontsize=44:fontcolor=white:"
         "borderw=4:bordercolor=black@0.85:x=(w-text_w)/2:y=h-200"
@@ -61,12 +73,12 @@ def _filtro(facecam: dict | None, credito: str, legenda: str | None = None) -> s
         cred = f"subtitles=filename='{legenda}',{cred}"
     if facecam:
         fx, fy, fw, fh = (facecam[k] for k in ("x", "y", "w", "h"))
-        L = _layout(facecam)
+        L = _layout(facecam, conteudo)
         return (
             f"[0:v]split=2[a][b];"
             f"[a]crop={fw}:{fh}:{fx}:{fy},scale=1080:{L['h_cam']},"
-            f"pad=1080:{L['h_cam'] + FAIXA}:0:0:black[topo];"
-            f"[b]crop={L['largura']}:{FONTE_H}:{L['x']}:0,scale=1080:{L['h_jogo']}[jogo];"
+            f"pad=1080:{L['h_cam'] + L['faixa']}:0:0:black[topo];"
+            f"[b]crop={L['largura']}:{L['altura']}:{L['x']}:{L['y']},scale=1080:{L['h_jogo']}[jogo];"
             f"[topo][jogo]vstack=inputs=2,setsar=1,{cred}[v]"
         )
     return (
@@ -121,7 +133,8 @@ def renderizar(video: Path, inicio: float, fim: float, saida: Path, canal: dict,
     cmd = [
         config.ffmpeg(), "-y", "-v", "error",
         "-ss", f"{inicio:.2f}", "-to", f"{fim:.2f}", "-i", str(Path(video).resolve()),
-        "-filter_complex", _filtro(canal.get("facecam"), canal.get("credito", ""), legenda.name if legenda else None),
+        "-filter_complex", _filtro(canal.get("facecam"), canal.get("credito", ""),
+                                   legenda.name if legenda else None, canal.get("conteudo")),
         "-map", "[v]", "-map", "0:a?",
         "-c:v", "libx264", "-preset", "slow", "-crf", "17", "-r", "30",
         "-c:a", "aac", "-b:a", "192k", "-ar", "48000",

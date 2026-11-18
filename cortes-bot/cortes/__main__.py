@@ -8,6 +8,7 @@
   python -m cortes kick-webhook                       recebe o chat do Kick via webhook
   python -m cortes processar <canal> <video.mp4>      gera as duas versões: curtos (Shorts/Reels) e TikTok (>1 min)
   python -m cortes painel                             abre o painel de revisão em http://localhost:8800
+  python -m cortes enquadrar <canal> <video.mp4>      escolhe na tela o recorte da cam e do conteúdo
 """
 import argparse
 import asyncio
@@ -58,6 +59,13 @@ def cmd_kick_webhook(cfg, a):
     from . import chat_kick
     mapa = {c["login"]: nome for nome, c in cfg["canais"].items() if c["plataforma"] == "kick"}
     chat_kick.servir_webhook(config.RAIZ / cfg["pasta_dados"], mapa, cfg["kick_api"]["porta_webhook"])
+
+
+def cmd_enquadrar(cfg, a):
+    from . import enquadrar
+
+    enquadrar.servir(Path(a.video), a.canal, config.canal(cfg, a.canal),
+                     config.RAIZ / cfg["pasta_dados"], a.porta)
 
 
 def cmd_painel(cfg, a):
@@ -153,7 +161,7 @@ def renderizar_trecho(c: dict, destino: Path, ctx: Contexto) -> Path | None:
     ass = None
     if ctx.legendas and c.get("palavras"):
         ass = legendas.gerar_ass(c["palavras"], c["inicio"], c["fim"], destino.with_suffix(".ass"),
-                                 render.posicao_legenda(ctx.canal.get("facecam")))
+                                 render.posicao_legenda(ctx.canal))
     return render.renderizar(fonte, ini, fim, destino, ctx.canal, ass)
 
 
@@ -300,6 +308,8 @@ def main():
     s = sub.add_parser("kick-assinar"); s.set_defaults(f=cmd_kick_assinar)
     s = sub.add_parser("kick-webhook"); s.set_defaults(f=cmd_kick_webhook)
     s = sub.add_parser("painel"); s.add_argument("--porta", type=int, default=8800); s.set_defaults(f=cmd_painel)
+    s = sub.add_parser("enquadrar"); s.add_argument("canal"); s.add_argument("video")
+    s.add_argument("--porta", type=int, default=8810); s.set_defaults(f=cmd_enquadrar)
     s = sub.add_parser("processar")
     s.add_argument("canal"); s.add_argument("video")
     s.add_argument("--chat", nargs="*"); s.add_argument("--inicio", type=float)
