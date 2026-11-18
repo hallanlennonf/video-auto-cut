@@ -109,6 +109,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const hhmmss = s => { s = Math.floor(s); return `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`; };
 const quando = iso => new Intl.DateTimeFormat("pt-BR", { timeZone: E?.fuso, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const tags = s => s.split(/[\s,]+/).filter(Boolean);
+// no campo elas aparecem com # — é assim que vão para o TikTok. O painel guarda sem.
+const comCerquilha = lista => (lista || []).map(h => "#" + String(h).replace(/^#+/, "")).join(" ");
 
 async function api(url, corpo) {
   const r = await fetch(url, corpo === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
@@ -187,7 +189,7 @@ function card(c) {
       <label class="campo"><span class="rotulo">Descrição</span>
         <textarea class="descricao" placeholder="Uma ou duas frases que completem o título" aria-label="Descrição">${esc(c.descricao)}</textarea></label>
       <label class="campo"><span class="rotulo">Hashtags</span>
-        <input class="hashtags" placeholder="gta6 alanzoka cortes" value="${esc((c.hashtags||[]).join(" "))}" aria-label="Hashtags"></label>
+        <input class="hashtags" placeholder="#gta6 #alanzoka #cortes" value="${esc(comCerquilha(c.hashtags))}" aria-label="Hashtags"></label>
       <div class="linha-ia">
         ${E.ia_disponivel ? `<button class="ia" type="button">Gerar com IA</button>` : ""}
         <button class="prompt" type="button">Copiar prompt</button>
@@ -248,10 +250,33 @@ function abrirPrompt(el, c, texto) {
 }
 
 function lerResposta(txt) {
-  const pega = re => (txt.match(re) || [])[1]?.trim() || "";
-  const titulo = pega(/t[ií]tulo\s*:\s*(.+)/i);
-  const descricao = pega(/descri[cç][aã]o\s*:\s*(.+)/i);
-  const hashtags = tags(pega(/hashtags?\s*:\s*(.+)/i).replace(/#/g, ""));
+  // o chat devolve dentro de um bloco de código; se vier colado com as cercas, tira
+  txt = txt.replace(/^\s*```[a-z]*\s*\n?/i, "").replace(/```\s*$/, "").trim();
+  // a LLM pode resolver mandar JSON mesmo sem pedirmos: aceita também, mas só como atalho.
+  // O formato de linhas continua sendo o pedido porque quebra de um campo por vez, e não
+  // de uma vez só como um JSON mal formado quebraria.
+  if (txt.startsWith("{")) {
+    try {
+      const j = JSON.parse(txt);
+      const h = Array.isArray(j.hashtags) ? j.hashtags : tags(String(j.hashtags || ""));
+      return { titulo: String(j.titulo || j.title || "").slice(0, 100),
+               descricao: String(j.descricao || j.description || ""),
+               hashtags: h.map(x => String(x).replace(/^#+/, "")).filter(Boolean) };
+    } catch { /* JSON torto: tenta ler como linhas, que é mais tolerante */ }
+  }
+  // As aspas opcionais em volta da chave fazem o mesmo regex servir para um JSON mal formado,
+  // que o parse acima recusou mas cujas linhas ainda dá para aproveitar.
+  // `ateOFim` existe por causa das hashtags: num JSON de uma linha só, o título precisa parar
+  // na aspa-vírgula para não levar o resto do objeto junto, mas a lista de hashtags tem
+  // aspa-vírgula entre cada item e só estaria completa indo até o fim da linha.
+  const pega = (nome, ateOFim = false) => {
+    const valor = ateOFim ? "(.+)" : `(.+?)(?=["']\\s*,|$)`;
+    return (txt.match(new RegExp(`["']?(?:${nome})["']?\\s*:\\s*${valor}`, "im")) || [])[1]?.trim() || "";
+  };
+  const limpar = s => s.replace(/^["'*[]+|["'*,\]]+$/g, "").trim();
+  const titulo = limpar(pega("t[ií]tulo|title"));
+  const descricao = limpar(pega("descri[cç][aã]o|description"));
+  const hashtags = tags(pega("hashtags?", true).replace(/["'*#[\]{}]/g, " ")).filter(Boolean);
   return { titulo: titulo.slice(0, 100), descricao, hashtags };
 }
 
@@ -268,7 +293,7 @@ $("#pr-aplicar").addEventListener("click", async () => {
   if (!await salvar(el, campos)) { $("#pr-msg").textContent = "não consegui salvar."; return; }
   $(".titulo", el).value = campos.titulo;
   $(".descricao", el).value = campos.descricao;
-  $(".hashtags", el).value = campos.hashtags.join(" ");
+  $(".hashtags", el).value = comCerquilha(campos.hashtags);
   $(".conta-letras", el).textContent = `${campos.titulo.length}/100`;
   $("#dlg-prompt").close();
 });
@@ -336,7 +361,7 @@ document.addEventListener("click", async e => {
     recado.textContent = "";
     $(".titulo", el).value = r.titulo;
     $(".descricao", el).value = r.descricao;
-    $(".hashtags", el).value = (r.hashtags || []).join(" ");
+    $(".hashtags", el).value = comCerquilha(r.hashtags);
     $(".conta-letras", el).textContent = `${r.titulo.length}/100`;
     Object.assign(c, r);
     $(".salvo", el).textContent = "Salvo";

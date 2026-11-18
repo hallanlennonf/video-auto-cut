@@ -188,10 +188,18 @@ def montar_compilacoes(curtos: list[dict], compilacoes: list[Compilacao], cfg: d
 
 LEGENDA = """Você escreve a legenda de um corte vertical de live para TikTok, Shorts e Reels.
 
-- titulo: até 80 caracteres, em português do Brasil, na voz de quem assistiu. Diga o que acontece,
-  sem enrolação e sem clickbait vazio ("você não vai acreditar"). Nada de emoji.
-- descricao: uma ou duas frases curtas que completem o título, não que o repitam.
-- hashtags: 3 a 5, minúsculas, sem o símbolo #, sem espaço. Inclua o jogo e o streamer quando fizer sentido.
+- titulo: até 80 caracteres, em português do Brasil, na voz de quem assistiu. Diga o que acontece
+  e qual é a graça, com o detalhe mais específico do trecho — é o específico que prende, não o
+  superlativo. Nada de emoji, e nada de clickbait vazio ("você não vai acreditar", "olha o que
+  aconteceu"): prometer sem entregar é o que faz o povo deslizar pra cima.
+- descricao: uma ou duas frases com energia, na linguagem de quem assiste live. Ela puxa o
+  espectador pra dentro — completa o título com o que ele ainda não sabe, dá o contexto que faz
+  a cena ter graça, ou provoca uma reação ("quem nunca?", "e ainda culpou o amigo"). Nunca
+  repete o título com outras palavras. Pode terminar com uma pergunta curta se couber natural.
+- hashtags: 4 a 6, minúsculas, sem o símbolo # e sem espaço dentro de cada uma. Misture: uma ou
+  duas bem amplas, que muita gente segue (o jogo, o tipo de conteúdo), e duas ou três específicas
+  do que aconteceu no corte ou do streamer. Só hashtag que alguém realmente buscaria ou segue —
+  nada inventado na hora, e nada de #fyp, #viral ou #foryou, que não entregam alcance nenhum.
 
 Você recebe a transcrição do trecho. Se ela não disser nada de interessante, diga isso no título
 em vez de inventar: é melhor o editor saber que o corte é fraco."""
@@ -215,10 +223,14 @@ def pedido_legenda(c: dict, canal: dict, cfg: dict) -> str:
 def prompt_avulso(c: dict, canal: dict, cfg: dict) -> str:
     """Prompt inteiro — instruções e pedido juntos — para colar num chat qualquer.
 
-    Pede a resposta em texto simples, e não em JSON: é mais fácil de ler na tela do chat,
-    e o painel sabe reconhecer as três linhas quando a resposta volta."""
-    return (f"{LEGENDA}\n\nResponda exatamente neste formato, sem mais nada:\n\n"
-            f"Título: ...\nDescrição: ...\nHashtags: ... (separadas por espaço, sem #)\n\n"
+    Pede a resposta dentro de um bloco de código: ChatGPT, Gemini e Claude desenham um botão
+    de copiar em cima de bloco de código, e no celular isso é um toque em vez de arrastar o
+    dedo para selecionar. Pede as hashtags já com # para o texto sair pronto para colar.
+    Texto simples e não JSON, que fica legível na tela do chat."""
+    return (f"{LEGENDA}\n\n"
+            f"Responda com UM bloco de código, e nada fora dele — nem introdução, nem comentário.\n"
+            f"Dentro do bloco, exatamente estas três linhas:\n\n"
+            f"```\nTítulo: ...\nDescrição: ...\nHashtags: #assim #com #cerquilha\n```\n\n"
             f"---\n\n{pedido_legenda(c, canal, cfg)}")
 
 
