@@ -83,6 +83,23 @@
   </form>
 </dialog>
 
+<dialog id="dlg-prompt" aria-labelledby="pr-titulo">
+  <form class="dlg" method="dialog">
+    <h2 id="pr-titulo">Gerar a legenda em outro chat</h2>
+    <p class="motivo">Copie o prompt, cole em qualquer chat de IA e traga a resposta de volta aqui.</p>
+    <label class="campo"><span class="rotulo">1 · o prompt <b id="pr-copiado"></b></span>
+      <textarea id="pr-texto" rows="9" readonly aria-label="Prompt"></textarea></label>
+    <label class="campo"><span class="rotulo">2 · cole aqui a resposta do chat</span>
+      <textarea id="pr-resposta" rows="5" placeholder="Título: ...&#10;Descrição: ...&#10;Hashtags: ..." aria-label="Resposta do chat"></textarea></label>
+    <div class="msg" id="pr-msg" aria-live="polite"></div>
+    <menu>
+      <button value="cancelar" type="button" id="pr-fechar">Fechar</button>
+      <button type="button" id="pr-copiar">Copiar prompt</button>
+      <button type="button" class="primario" id="pr-aplicar">Aplicar no corte</button>
+    </menu>
+  </form>
+</dialog>
+
 <script>
 let cortes = [], E = null, filtroStatus = "pendente", dlgCorte = null;
 const FORMATOS = { curto: "Shorts/Reels", tiktok: "TikTok longo", compilacao: "TikTok compilação" };
@@ -171,10 +188,11 @@ function card(c) {
         <textarea class="descricao" placeholder="Uma ou duas frases que completem o título" aria-label="Descrição">${esc(c.descricao)}</textarea></label>
       <label class="campo"><span class="rotulo">Hashtags</span>
         <input class="hashtags" placeholder="gta6 alanzoka cortes" value="${esc((c.hashtags||[]).join(" "))}" aria-label="Hashtags"></label>
-      ${E.ia_disponivel ? `<div class="linha-ia">
-        <button class="ia" type="button">Gerar com IA</button>
+      <div class="linha-ia">
+        ${E.ia_disponivel ? `<button class="ia" type="button">Gerar com IA</button>` : ""}
+        <button class="prompt" type="button">Copiar prompt</button>
         <span class="motivo ia-recado"></span>
-      </div>` : ""}
+      </div>
       ${c.motivo_ia ? `<div class="motivo">IA: ${esc(c.motivo_ia)}</div>` : ""}
       ${c.texto ? `<details><summary>Transcrição</summary>${esc(c.texto)}</details>` : ""}
       ${pubsHtml(c)}
@@ -204,6 +222,56 @@ async function rerender(el, c) {
   }
   recado.textContent = "demorou demais; veja o log na aba Lives";
 }
+
+// ------------------------------------------------- prompt para colar noutro chat
+let promptAlvo = null;
+
+async function copiarPrompt() {
+  const aviso = $("#pr-copiado");
+  try {
+    await navigator.clipboard.writeText($("#pr-texto").value);
+    aviso.textContent = "copiado";
+  } catch {                                  // sem permissão de área de transferência
+    $("#pr-texto").select();
+    aviso.textContent = "selecionado — use Ctrl+C";
+  }
+  setTimeout(() => { aviso.textContent = ""; }, 4000);
+}
+
+function abrirPrompt(el, c, texto) {
+  promptAlvo = { el, c };
+  $("#pr-texto").value = texto;
+  $("#pr-resposta").value = "";
+  $("#pr-msg").textContent = "";
+  $("#dlg-prompt").showModal();
+  copiarPrompt();                            // o clique no botão já conta como gesto do usuário
+}
+
+function lerResposta(txt) {
+  const pega = re => (txt.match(re) || [])[1]?.trim() || "";
+  const titulo = pega(/t[ií]tulo\s*:\s*(.+)/i);
+  const descricao = pega(/descri[cç][aã]o\s*:\s*(.+)/i);
+  const hashtags = tags(pega(/hashtags?\s*:\s*(.+)/i).replace(/#/g, ""));
+  return { titulo: titulo.slice(0, 100), descricao, hashtags };
+}
+
+$("#pr-copiar").addEventListener("click", copiarPrompt);
+$("#pr-fechar").addEventListener("click", () => $("#dlg-prompt").close());
+$("#pr-aplicar").addEventListener("click", async () => {
+  if (!promptAlvo) return;
+  const campos = lerResposta($("#pr-resposta").value);
+  if (!campos.titulo) {
+    $("#pr-msg").textContent = "não achei uma linha começando com 'Título:' na resposta.";
+    return;
+  }
+  const { el, c } = promptAlvo;
+  if (!await salvar(el, campos)) { $("#pr-msg").textContent = "não consegui salvar."; return; }
+  $(".titulo", el).value = campos.titulo;
+  $(".descricao", el).value = campos.descricao;
+  $(".hashtags", el).value = campos.hashtags.join(" ");
+  $(".conta-letras", el).textContent = `${campos.titulo.length}/100`;
+  $("#dlg-prompt").close();
+});
 
 function camposDoCard(el) {
   return { titulo: $(".titulo", el).value.trim(), descricao: $(".descricao", el).value, hashtags: tags($(".hashtags", el).value) };
@@ -251,6 +319,14 @@ document.addEventListener("click", async e => {
     }
   }
   if (e.target.classList.contains("rerender")) rerender(el, c);
+  if (e.target.classList.contains("prompt")) {
+    const b = e.target;
+    b.disabled = true;
+    const r = await api("/api/prompt/" + encodeURI(c.id));
+    b.disabled = false;
+    if (!r.ok) { $(".ia-recado", el).textContent = r.erro || "não consegui montar o prompt"; return; }
+    abrirPrompt(el, c, r.prompt);
+  }
   if (e.target.classList.contains("ia")) {
     const b = e.target, recado = $(".ia-recado", el);
     b.disabled = true; recado.textContent = "escrevendo…";

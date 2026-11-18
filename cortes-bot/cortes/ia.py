@@ -203,16 +203,32 @@ class Legenda(BaseModel):
     hashtags: list[str]
 
 
+def pedido_legenda(c: dict, canal: dict, cfg: dict) -> str:
+    """O pedido em texto. Serve para a chamada à API e para o botão que copia o prompt:
+    quem não tem credencial cola isso em qualquer chat e recebe a mesma coisa."""
+    texto = _frases(c.get("palavras", []), c["inicio"], c["fim"]) if c.get("palavras") else (c.get("texto") or "")
+    hint = (cfg.get("ia") or {}).get("contexto", "")
+    return (f"Canal: {canal.get('canal_destino', '')} (streamer: {canal.get('login', '')})."
+            f"{(' ' + hint) if hint else ''}\n\nTranscrição do corte:\n{texto or '(sem fala)'}")
+
+
+def prompt_avulso(c: dict, canal: dict, cfg: dict) -> str:
+    """Prompt inteiro — instruções e pedido juntos — para colar num chat qualquer.
+
+    Pede a resposta em texto simples, e não em JSON: é mais fácil de ler na tela do chat,
+    e o painel sabe reconhecer as três linhas quando a resposta volta."""
+    return (f"{LEGENDA}\n\nResponda exatamente neste formato, sem mais nada:\n\n"
+            f"Título: ...\nDescrição: ...\nHashtags: ... (separadas por espaço, sem #)\n\n"
+            f"---\n\n{pedido_legenda(c, canal, cfg)}")
+
+
 def legenda_para(c: dict, canal: dict, cfg: dict) -> dict:
     """Título, descrição e hashtags para um corte já escolhido. Levanta RuntimeError em erro."""
     import anthropic
 
     if not credenciais_disponiveis():
         raise RuntimeError("falta a ANTHROPIC_API_KEY: defina a variável de ambiente e reinicie o painel.")
-    texto = _frases(c.get("palavras", []), c["inicio"], c["fim"]) if c.get("palavras") else (c.get("texto") or "")
-    hint = (cfg.get("ia") or {}).get("contexto", "")
-    pedido = (f"Canal: {canal.get('canal_destino', '')} (streamer: {canal.get('login', '')})."
-              f"{(' ' + hint) if hint else ''}\n\nTranscrição do corte:\n{texto or '(sem fala)'}")
+    pedido = pedido_legenda(c, canal, cfg)
     try:
         resp = anthropic.Anthropic().beta.messages.parse(
             model=MODELO, max_tokens=2000, system=LEGENDA,
