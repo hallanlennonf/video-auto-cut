@@ -67,8 +67,9 @@ Por isso o chat precisa ser gravado **durante** a live com `chat-twitch`.
      dá para publicar agora, cancelar ou reagendar
    - **O painel precisa estar aberto** (`python -m cortes painel`) no horário agendado: é ele que publica.
      Se o PC estiver desligado, o que venceu sai assim que o painel abrir de novo
-   - Cota do YouTube esgotada → reagenda sozinho para o dia seguinte; acesso expirado → a conta fica
-     marcada para "vincular de novo" na aba Contas
+   - Cota do YouTube (ou limite diário do TikTok) esgotada → reagenda sozinho para o dia seguinte;
+     acesso expirado → a conta fica marcada para "vincular de novo" na aba Contas
+   - Com conta do TikTok marcada, a janela pede o modo (rascunho ou direto; veja abaixo)
 
 ## Vincular o YouTube (uma vez)
 
@@ -97,6 +98,41 @@ Limites do YouTube enquanto o projeto não passa pela auditoria do Google:
 
 Os acessos ficam só no seu PC, em `dados/_publicacao/tokens/`. **Nunca compartilhe essa pasta nem `segredos/`.**
 
+## Vincular o TikTok (uma vez)
+
+O painel publica pela Content Posting API oficial do TikTok. Para isso, você cria um app de desenvolvedor:
+
+1. Entre em https://developers.tiktok.com com uma conta do TikTok, vá em **Manage apps** e crie um app.
+2. Use o **Sandbox** do app (fica no topo da página do app): ele funciona sem passar pela revisão do TikTok.
+   Em **Sandbox settings → Target users**, adicione as contas do TikTok em que você vai publicar.
+3. Em **Products**, adicione:
+   - **Login Kit**, plataforma **Desktop**, com o Redirect URI exatamente
+     `http://localhost:8800/oauth/tiktok/callback`
+   - **Content Posting API**, e ative **Direct Post** (só necessário para o modo "direto")
+4. Em **Scopes**, confira se estão `user.info.basic`, `video.upload` e `video.publish`.
+5. Copie o **Client key** e o **Client secret** (os do Sandbox) para o arquivo
+   `segredos/tiktok_app.json`, neste formato:
+   ```json
+   {"client_key": "cole aqui", "client_secret": "cole aqui"}
+   ```
+6. Abra o painel → aba **Contas** → **Vincular conta do TikTok**, faça login e autorize.
+   Para vincular outra conta, saia da anterior no tiktok.com (ou use uma janela anônima) e repita.
+   Depois marque de quais streamers cada conta é a padrão.
+
+Ao aprovar um corte com uma conta do TikTok marcada, você escolhe o **modo**:
+
+| Modo | Como funciona | Limites |
+|---|---|---|
+| **Rascunho** (padrão) | O vídeo chega na caixa de entrada do app do TikTok. Você abre a notificação, escolhe som/capa, cola a legenda (botão **Copiar legenda** na aba Fila) e publica | Pode ser público já. Até 5 rascunhos pendentes por conta a cada 24h |
+| **Direto** | Publica no perfil já com legenda, privacidade e interações que você escolher na janela | Enquanto o app não passar pela auditoria do TikTok: **só em conta privada** e o vídeo sai como **"Só eu"**; até 5 contas por dia |
+
+Para postar direto em público, envie o app para revisão e peça a auditoria da Content Posting API no
+portal (a janela de publicar já segue as regras de interface que o TikTok exige). Mesmo auditado, o
+TikTok limita cada conta a ~15 posts por dia via API.
+
+O acesso vale 180 dias e é renovado sozinho; se vencer ou for revogado, a conta aparece com
+"vincular de novo" na aba Contas.
+
 ## Antes de usar de verdade
 
 - **Facecam**: meça a posição da câmera de cada streamer (num print do VOD em 1920x1080) e preencha
@@ -109,8 +145,11 @@ Os acessos ficam só no seu PC, em `dados/_publicacao/tokens/`. **Nunca comparti
 
 `python tests/teste_sintetico.py` gera uma live falsa de 10 minutos, com momentos conhecidos, e valida a detecção e os cortes 1080x1920.
 
+`python tests/teste_publicacao.py` e `python tests/teste_tiktok.py` testam a fila, o YouTube e o TikTok
+com respostas simuladas (não publicam nada nem usam suas contas).
+
 ## Próximas fases
 
 2. ~~Whisper, legendas, IA para título/filtro e painel de revisão~~ (feito)
-3. Upload pelas APIs oficiais (YouTube → TikTok → Instagram)
+3. Upload pelas APIs oficiais (~~YouTube~~ e ~~TikTok~~ feitos; falta o Instagram)
 4. Métricas e relatórios

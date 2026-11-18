@@ -1,4 +1,4 @@
-"""Contas vinculadas para publicação (YouTube, e depois TikTok/Instagram).
+"""Contas vinculadas para publicação (YouTube e TikTok; Instagram depois).
 
 - dados/_publicacao/contas.json   lista de contas (sem segredos): o painel pode mostrar
 - dados/_publicacao/tokens/<id>.json  tokens de acesso de cada conta: NUNCA saem do seu PC
@@ -14,6 +14,7 @@ from . import config
 
 PLATAFORMAS = {
     "youtube": {"nome": "YouTube", "duracao_max": 180},
+    "tiktok": {"nome": "TikTok", "duracao_max": 600},   # limite real de cada perfil é conferido na hora de postar
     "simulacao": {"nome": "Simulação (não publica nada)", "duracao_max": 10_000},
 }
 
@@ -47,8 +48,10 @@ def obter(conta_id: str) -> dict | None:
     return next((c for c in listar() if c["id"] == conta_id), None)
 
 
-def adicionar(plataforma: str, nome: str, externo_id: str = "", url: str = "", token: dict | None = None) -> dict:
-    """Cria a conta, ou atualiza o token se o mesmo canal externo já estava vinculado."""
+def adicionar(plataforma: str, nome: str, externo_id: str = "", url: str = "", token: dict | None = None,
+              extra: dict | None = None) -> dict:
+    """Cria a conta, ou atualiza o token se o mesmo canal externo já estava vinculado.
+    `extra`: dados públicos da conta (ex.: @usuario do TikTok); nunca tokens."""
     if plataforma not in PLATAFORMAS:
         raise ValueError(f"plataforma desconhecida: {plataforma}")
     with _trava:
@@ -59,6 +62,7 @@ def adicionar(plataforma: str, nome: str, externo_id: str = "", url: str = "", t
                      "externo_id": externo_id, "url": url, "canais": [], "precisa_reconectar": False,
                      "vinculada_em": datetime.now(timezone.utc).isoformat(timespec="seconds")}
             contas.append(conta)
+        conta.update(extra or {})
         conta.update(nome=nome, url=url, precisa_reconectar=False)
         _salvar(contas)
         if token is not None:

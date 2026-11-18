@@ -69,11 +69,33 @@
         <option value="public">Público</option><option value="unlisted">Não listado</option><option value="private">Privado</option>
       </select>
     </fieldset>
+    <fieldset id="dlg-tt-box" hidden><legend>TikTok</legend>
+      <label class="opcao"><input type="radio" name="tt-modo" value="rascunho"> <span>Rascunho no app <small>— você abre a notificação no TikTok, escolhe som/capa, cola a legenda e publica (pode ser público)</small></span></label>
+      <label class="opcao"><input type="radio" name="tt-modo" value="direto"> <span>Postar direto <small>— já com legenda; enquanto o app não for auditado pelo TikTok, só em conta privada e como “Só eu”</small></span></label>
+      <div id="dlg-tt-direto" class="tt-direto" hidden>
+        <div id="dlg-tt-criador" class="meta" aria-live="polite"></div>
+        <label class="tt-campo">Quem pode ver este vídeo
+          <select id="dlg-tt-priv" aria-label="Quem pode ver no TikTok"></select></label>
+        <div><small class="motivo">Permitir que os usuários:</small><br>
+          <label class="chk"><input type="checkbox" id="dlg-tt-comentarios"> Comentem</label>
+          <label class="chk"><input type="checkbox" id="dlg-tt-dueto"> Façam dueto</label>
+          <label class="chk"><input type="checkbox" id="dlg-tt-costura"> Façam costura</label></div>
+        <label class="chk"><input type="checkbox" id="dlg-tt-comercial"> Divulgar conteúdo comercial</label>
+        <div id="dlg-tt-comercial-box" hidden>
+          <label class="chk"><input type="checkbox" id="dlg-tt-marca"> Sua marca</label>
+          <label class="chk"><input type="checkbox" id="dlg-tt-parceria"> Conteúdo de marca</label>
+          <div id="dlg-tt-rotulo" class="motivo"></div></div>
+        <p class="motivo" id="dlg-tt-consentimento"></p>
+        <p class="motivo">Depois do envio, o TikTok pode levar alguns minutos para processar o vídeo e mostrá-lo no perfil.</p>
+      </div>
+      <p class="motivo" id="dlg-tt-legenda-aviso" hidden>No modo rascunho o TikTok não recebe a legenda pela API: ela fica na aba Fila com um botão “Copiar legenda”.</p>
+    </fieldset>
     <fieldset><legend>Quando</legend>
       <label class="opcao"><input type="radio" name="modo" value="proximo" checked> Próximo horário livre <small id="dlg-horarios"></small></label>
       <label class="opcao"><input type="radio" name="modo" value="agora"> Agora</label>
       <label class="opcao"><input type="radio" name="modo" value="data"> Em <input type="datetime-local" id="dlg-data" aria-label="Data e hora"></label>
     </fieldset>
+    <div class="obs" id="dlg-falta" aria-live="polite"></div>
     <div class="msg" id="dlg-msg" aria-live="polite"></div>
     <div class="rodape">
       <button value="cancelar" type="button" id="dlg-cancelar">Cancelar</button>
@@ -111,6 +133,10 @@ const quando = iso => new Intl.DateTimeFormat("pt-BR", { timeZone: E?.fuso, day:
 const tags = s => s.split(/[\s,]+/).filter(Boolean);
 // no campo elas aparecem com # — é assim que vão para o TikTok. O painel guarda sem.
 const comCerquilha = lista => (lista || []).map(h => "#" + String(h).replace(/^#+/, "")).join(" ");
+const rotulo = (status, modo) => status === "publicado" && modo === "rascunho" ? "Enviado ao app" : STATUS[status];
+const privTxt = i => i.plataforma === "youtube" ? " · " + esc(i.privacidade)
+  : i.plataforma === "tiktok" ? " · " + esc(i.privacidade === "rascunho" ? "rascunho no app" : (E.privacidades_tiktok[i.privacidade] || i.privacidade)) : "";
+let filaItens = [];
 
 async function api(url, corpo) {
   const r = await fetch(url, corpo === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
@@ -154,7 +180,7 @@ function desenharCortes() {
 
 function pubsHtml(c) {
   if (!c.publicacoes.length) return "";
-  return `<div class="pubs">${c.publicacoes.map(p => `<span><span class="pill st-${p.status}">${STATUS[p.status]}</span> ${esc(p.conta)}
+  return `<div class="pubs">${c.publicacoes.map(p => `<span><span class="pill st-${p.status}">${rotulo(p.status, p.modo)}</span> ${esc(p.conta)}
     ${p.url && p.url.startsWith("http") ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">ver</a>` : p.status === "agendado" ? "· " + quando(p.quando) : ""}</span>`).join("")}</div>`;
 }
 
@@ -337,9 +363,7 @@ document.addEventListener("click", async e => {
     if (!r.ok) { recado.textContent = r.erro; return; }
     recado.textContent = "";
     window.open(r.url, "enquadramento");
-    if (confirm(["Ajuste e salve na aba que abriu.", "",
-                 "O enquadramento novo vale para os próximos cortes — este aqui já está renderizado.",
-                 "Re-renderizar este corte agora?"].join("\n"))) {
+    if (confirm("Ajuste e salve na aba que abriu.\n\nO enquadramento novo vale para os próximos cortes — este aqui já está renderizado. Re-renderizar este corte agora?")) {
       rerender(el, c);
     }
   }
@@ -389,7 +413,9 @@ $("#canal").addEventListener("change", desenharCortes);
 $("#formato").addEventListener("change", desenharCortes);
 
 // ---------------------------------------------------------------- janela "publicar"
-const DUR_MAX = { youtube: 180, simulacao: 1e9 };
+const LINK_MUSICA = '<a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noopener">Confirmação de Uso de Música</a>';
+const LINK_MARCA = '<a href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noopener">Política de Conteúdo de Marca</a>';
+let ttCriadores = {};
 function abrirPublicar(el) {
   const c = cortes.find(x => x.id === el.dataset.id);
   dlgCorte = { el, c };
@@ -398,7 +424,7 @@ function abrirPublicar(el) {
   $("#dlg-resumo").innerHTML = `<span class="badge">${esc(c.canal)}</span><span class="badge fmt-${c.formato}">${FORMATOS[c.formato]}</span><span>${c.duracao}s</span>`;
   const jaUsadas = new Set(c.publicacoes.filter(p => p.status !== "erro").map(p => p.conta_id));
   const lista = E.contas.map(ct => {
-    const ok = c.duracao <= (DUR_MAX[ct.plataforma] ?? 0), ja = jaUsadas.has(ct.id);
+    const ok = c.duracao <= (E.duracao_max[ct.plataforma] ?? 0), ja = jaUsadas.has(ct.id);
     const marcada = ok && !ja && ct.canais.includes(c.canal);
     const obs = !ok ? "não aceita essa duração" : ja ? "já está na fila / publicado" : ct.precisa_reconectar ? "precisa reconectar" : "";
     const tiktokCurto = c.formato === "curto" && ct.plataforma === "tiktok" ? " · curto não monetiza no TikTok" : "";
@@ -409,13 +435,95 @@ function abrirPublicar(el) {
   $("#dlg-priv").value = E.privacidade_youtube;
   $("#dlg-horarios").textContent = `(${E.horarios.join(", ")} · até ${E.max_por_dia}/dia por conta)`;
   $("#dlg-msg").textContent = "";
+  // TikTok: as opções do perfil são consultadas de novo a cada abertura; nada vem marcado por padrão
+  ttCriadores = {};
+  document.querySelectorAll('input[name="tt-modo"]').forEach(r => { r.checked = r.value === E.tiktok_modo; });
+  ["comentarios", "dueto", "costura", "comercial", "marca", "parceria"].forEach(k => { $(`#dlg-tt-${k}`).checked = false; });
+  $("#dlg-tt-priv").innerHTML = "";
   atualizarPriv();
   $("#dlg").showModal();
 }
+const contasTT = () => [...document.querySelectorAll("#dlg-contas input:checked")].filter(i => i.dataset.plat === "tiktok").map(i => i.value);
 function atualizarPriv() {
-  $("#dlg-priv-box").hidden = ![...document.querySelectorAll("#dlg-contas input:checked")].some(i => i.dataset.plat === "youtube");
+  const sel = [...document.querySelectorAll("#dlg-contas input:checked")];
+  $("#dlg-priv-box").hidden = !sel.some(i => i.dataset.plat === "youtube");
+  const tt = contasTT();
+  $("#dlg-tt-box").hidden = !tt.length;
+  for (const r of document.querySelectorAll('input[name="tt-modo"]')) {
+    const ok = tt.every(id => (E.contas.find(c => c.id === id)?.modos || ["rascunho", "direto"]).includes(r.value));
+    r.disabled = !ok;
+    if (!ok) r.checked = false;
+  }
+  atualizarTT();
+}
+async function atualizarTT() {
+  const tt = contasTT(), modo = $('input[name="tt-modo"]:checked')?.value;
+  const direto = tt.length > 0 && modo === "direto";
+  $("#dlg-tt-direto").hidden = !direto;
+  $("#dlg-tt-legenda-aviso").hidden = !(tt.length && modo === "rascunho");
+  if (direto) {
+    const faltam = tt.filter(id => !ttCriadores[id]);
+    if (faltam.length) {
+      $("#dlg-tt-criador").textContent = "Consultando o perfil no TikTok…";
+      validarTT(true);
+      await Promise.all(faltam.map(async id => {
+        const r = await api(`/api/tiktok/${encodeURIComponent(id)}/criador`);
+        ttCriadores[id] = r.ok ? r.criador : { erro: r.erro };
+      }));
+    }
+    desenharCriador(contasTT());
+  }
+  validarTT();
+}
+function desenharCriador(tt) {
+  const infos = tt.filter(id => ttCriadores[id]).map(id => ({ nome: E.contas.find(c => c.id === id)?.nome, ...ttCriadores[id] }));
+  const ok = infos.filter(i => !i.erro);
+  const longos = ok.filter(i => i.duracao_max && dlgCorte.c.duracao > i.duracao_max);
+  $("#dlg-tt-criador").innerHTML = "Postando como: " + infos.map(i => i.erro
+      ? `<span class="pill st-erro">${esc(i.nome)}: ${esc(i.erro)}</span>`
+      : `<b>${esc(i.nome)}</b>${i.usuario ? ` (@${esc(i.usuario)})` : ""}`).join(", ")
+    + longos.map(i => `<br><span class="pill st-erro">${esc(i.nome)} só aceita até ${i.duracao_max}s</span>`).join("");
+  const opcoes = ok.length ? ok.map(i => i.privacidades).reduce((a, b) => a.filter(x => b.includes(x))) : [];
+  const atual = $("#dlg-tt-priv").value;
+  $("#dlg-tt-priv").innerHTML = `<option value="" disabled ${opcoes.includes(atual) ? "" : "selected"}>Escolha…</option>` +
+    opcoes.map(p => `<option value="${esc(p)}" ${p === atual ? "selected" : ""}>${esc(E.privacidades_tiktok[p] || p)}</option>`).join("");
+  for (const [campo, chave] of [["comentarios", "comentarios_off"], ["dueto", "dueto_off"], ["costura", "costura_off"]]) {
+    const off = ok.some(i => i[chave]), cb = $(`#dlg-tt-${campo}`);
+    cb.disabled = off;
+    if (off) cb.checked = false;
+    cb.closest("label").title = off ? "Desativado nas configurações de privacidade do perfil no TikTok" : "";
+  }
+}
+function validarTT(carregando = false) {
+  let falta = "";
+  const tt = contasTT(), modo = $('input[name="tt-modo"]:checked')?.value;
+  if (tt.length && !modo) falta = "Escolha como enviar ao TikTok.";
+  if (tt.length && modo === "direto") {
+    const comercial = $("#dlg-tt-comercial").checked, marca = $("#dlg-tt-marca").checked, parceria = $("#dlg-tt-parceria").checked;
+    $("#dlg-tt-comercial-box").hidden = !comercial;
+    const soEu = $('#dlg-tt-priv option[value="SELF_ONLY"]');
+    if (soEu) {
+      soEu.disabled = comercial && parceria;
+      soEu.title = soEu.disabled ? "Conteúdo de marca não pode ser privado" : "";
+      if (soEu.disabled && soEu.selected) $("#dlg-tt-priv").value = "";
+    }
+    $("#dlg-tt-rotulo").textContent = !comercial ? "" : parceria ? "O vídeo será rotulado como “Parceria paga”."
+      : marca ? "O vídeo será rotulado como “Conteúdo promocional”." : "";
+    $("#dlg-tt-consentimento").innerHTML = comercial && parceria
+      ? `Ao publicar, você concorda com a ${LINK_MARCA} e com a ${LINK_MUSICA} do TikTok.`
+      : `Ao publicar, você concorda com a ${LINK_MUSICA} do TikTok.`;
+    if (carregando) falta = "Consultando o perfil no TikTok…";
+    else if (tt.some(id => ttCriadores[id]?.erro)) falta = "Uma das contas do TikTok não pode postar agora (veja acima).";
+    else if (tt.some(id => ttCriadores[id]?.duracao_max && dlgCorte.c.duracao > ttCriadores[id].duracao_max)) falta = "O vídeo é mais longo do que o TikTok aceita nessa conta.";
+    else if (comercial && !marca && !parceria) falta = "Indique se o conteúdo promove você, uma marca parceira ou ambos.";
+    else if (!$("#dlg-tt-priv").value) falta = "Escolha quem pode ver o vídeo no TikTok.";
+  }
+  $("#dlg-confirmar").disabled = !!falta;
+  $("#dlg-confirmar").title = falta;
+  $("#dlg-falta").textContent = falta;
 }
 $("#dlg-contas").addEventListener("change", atualizarPriv);
+$("#dlg-tt-box").addEventListener("change", e => { if (e.target.name === "tt-modo") atualizarTT(); else validarTT(); });
 $("#dlg-data").addEventListener("focus", () => { $('input[name="modo"][value="data"]').checked = true; });
 $("#dlg-cancelar").addEventListener("click", () => $("#dlg").close());
 $("#dlg-so-aprovar").addEventListener("click", async () => {
@@ -430,9 +538,12 @@ $("#dlg-confirmar").addEventListener("click", async () => {
   if (!contasSel.length) return $("#dlg-msg").textContent = "Escolha pelo menos uma conta.";
   if (modo === "data" && !$("#dlg-data").value) return $("#dlg-msg").textContent = "Escolha a data e a hora.";
   $("#dlg-confirmar").disabled = true;
+  const tiktok = { modo: $('input[name="tt-modo"]:checked')?.value, privacidade: $("#dlg-tt-priv").value,
+    comentarios: $("#dlg-tt-comentarios").checked, dueto: $("#dlg-tt-dueto").checked, costura: $("#dlg-tt-costura").checked,
+    comercial: $("#dlg-tt-comercial").checked, marca_propria: $("#dlg-tt-marca").checked, conteudo_marca: $("#dlg-tt-parceria").checked };
   const r = await api("/api/publicar", { corte_id: c.id, contas: contasSel, modo, data: $("#dlg-data").value || null,
-    privacidade: $("#dlg-priv").value, ...campos });
-  $("#dlg-confirmar").disabled = false;
+    privacidade: $("#dlg-priv").value, tiktok, ...campos });
+  validarTT();
   if (!r.ok) return $("#dlg-msg").textContent = r.erro;
   $("#dlg").close();
   const txt = r.itens.length ? r.itens.map(i => `${i.conta_nome}: ${quando(i.agendado_para)}`).join(" · ") : "nada novo (já estava na fila)";
@@ -443,17 +554,19 @@ $("#dlg-confirmar").addEventListener("click", async () => {
 
 // ---------------------------------------------------------------- fila
 async function desenharFila() {
-  const itens = await api("/api/fila");
+  const itens = filaItens = await api("/api/fila");
   if (!itens.length) return $("#fila").innerHTML = '<p class="vazio">A fila está vazia. Aprove um corte na Revisão para agendar.</p>';
   $("#fila").innerHTML = `<div class="tabela"><table>
     <thead><tr><th>Quando</th><th>Vídeo</th><th>Conta</th><th>Status</th><th>Ações</th></tr></thead><tbody>
     ${itens.map(i => `<tr>
       <td>${quando(i.agendado_para)}</td>
       <td>${esc(i.titulo)}<br><small class="motivo">${esc(i.corte_id.split("/")[0])}</small></td>
-      <td>${esc(i.conta_nome)}<br><small class="motivo">${esc(E.plataformas[i.plataforma] || i.plataforma)}${i.plataforma === "youtube" ? " · " + esc(i.privacidade) : ""}</small></td>
-      <td><span class="pill st-${i.status}">${STATUS[i.status]}</span>
+      <td>${esc(i.conta_nome)}<br><small class="motivo">${esc(E.plataformas[i.plataforma] || i.plataforma)}${privTxt(i)}</small></td>
+      <td><span class="pill st-${i.status}">${rotulo(i.status, i.resultado?.modo)}</span>
         ${i.resultado?.url?.startsWith("http") ? `<br><a href="${esc(i.resultado.url)}" target="_blank" rel="noopener">abrir vídeo</a>` : ""}
-        ${i.resultado?.privacidade && i.resultado.privacidade !== i.privacidade ? `<br><small class="motivo">ficou ${esc(i.resultado.privacidade)}</small>` : ""}
+        ${i.plataforma === "youtube" && i.resultado?.privacidade && i.resultado.privacidade !== i.privacidade ? `<br><small class="motivo">ficou ${esc(i.resultado.privacidade)}</small>` : ""}
+        ${i.resultado?.observacao ? `<div class="obs">${esc(i.resultado.observacao)}</div>` : ""}
+        ${i.resultado?.legenda ? `<button data-copiar="${esc(i.id)}">Copiar legenda</button>` : ""}
         ${i.erro ? `<div class="erro">${esc(i.erro)}</div>` : ""}</td>
       <td>${i.status === "agendado" ? `<button data-acao="agora" data-id="${i.id}">Publicar agora</button><button data-acao="cancelar" data-id="${i.id}">Cancelar</button>` : ""}
         ${i.status === "erro" || i.status === "cancelado" ? `<button data-acao="tentar" data-id="${i.id}">Reagendar</button>` : ""}
@@ -461,6 +574,13 @@ async function desenharFila() {
     </tr>`).join("")}</tbody></table></div>`;
 }
 $("#fila").addEventListener("click", async e => {
+  const cp = e.target.closest("button[data-copiar]");
+  if (cp) {
+    const it = filaItens.find(i => i.id === cp.dataset.copiar);
+    try { await navigator.clipboard.writeText(it.resultado.legenda); cp.textContent = "Legenda copiada"; }
+    catch { prompt("Copie a legenda:", it.resultado.legenda); }
+    return;
+  }
   const b = e.target.closest("button[data-acao]"); if (!b) return;
   b.disabled = true;
   const r = await api(`/api/fila/${b.dataset.id}/${b.dataset.acao}`, {});
@@ -474,7 +594,8 @@ function desenharContas() {
   const canais = Object.entries(E.canais);
   const contasHtml = E.contas.length ? E.contas.map(ct => `<div class="conta" data-id="${esc(ct.id)}">
       <div class="linha"><span class="nome">${esc(ct.nome)}</span><span class="pill">${esc(E.plataformas[ct.plataforma] || ct.plataforma)}</span>
-        ${ct.url ? `<a href="${esc(ct.url)}" target="_blank" rel="noopener">abrir canal</a>` : ""}</div>
+        ${ct.url ? `<a href="${esc(ct.url)}" target="_blank" rel="noopener">${ct.plataforma === "tiktok" ? "abrir perfil" : "abrir canal"}</a>` : ""}</div>
+      ${ct.plataforma === "tiktok" ? `<small class="motivo">${ct.usuario ? "@" + esc(ct.usuario) + " · " : ""}envio: ${esc((ct.modos || []).join(" e ") || "—")}</small>` : ""}
       ${ct.precisa_reconectar ? `<div class="aviso">O acesso expirou ou foi revogado. <a href="/oauth/${esc(ct.plataforma)}/iniciar">Vincular de novo</a></div>` : ""}
       <div><small class="motivo">Conta padrão para:</small><br>${canais.map(([n, c]) =>
         `<label class="chk"><input type="checkbox" data-canal="${esc(n)}" ${ct.canais.includes(n) ? "checked" : ""}> ${esc(c.destino)}</label>`).join("")}</div>
@@ -493,7 +614,14 @@ function desenharContas() {
     <div class="secao"><h2>Conta de simulação</h2>
       <p>Não publica nada: serve para testar a fila e os horários.</p>
       <div class="linha"><input id="sim-nome" placeholder="Nome (ex.: Teste alanzoka)" aria-label="Nome da conta de simulação"><button id="sim-add">Adicionar</button></div></div>
-    <div class="secao"><h2>TikTok e Instagram</h2><p>Em breve.</p></div>`;
+    <div class="secao"><h2>Vincular TikTok</h2>
+      ${E.tiktok_configurado
+        ? `<p>Você faz login no site do TikTok e autoriza o envio de vídeos. Para vincular outra conta, saia da atual no tiktok.com (ou use outra janela anônima) antes de clicar.</p>
+           <a href="/oauth/tiktok/iniciar"><button type="button" class="primario">Vincular conta do TikTok</button></a>`
+        : `<div class="aviso">Falta a chave do app do TikTok. Siga o passo a passo do README e salve o arquivo em <code>${esc(E.tiktok_credencial)}</code>; depois recarregue esta página.</div>`}
+      <p><b>Rascunho</b> (padrão): o vídeo chega na caixa de entrada do app do TikTok e você publica de lá, em público, com o som e a capa que quiser. Até 5 rascunhos pendentes por dia por conta.<br>
+      <b>Direto</b>: publica já com legenda, mas enquanto o app não passar pela auditoria do TikTok a conta precisa estar privada e o vídeo sai como “Só eu”.</p></div>
+    <div class="secao"><h2>Instagram</h2><p>Em breve.</p></div>`;
 }
 $("#contas").addEventListener("change", async e => {
   const el = e.target.closest(".conta"); if (!el || !e.target.dataset.canal) return;

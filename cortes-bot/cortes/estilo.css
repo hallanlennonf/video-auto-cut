@@ -287,6 +287,14 @@ dialog::backdrop { background: rgba(10, 5, 22, .72); backdrop-filter: blur(3px);
 .dlg .opcao small { color: var(--tinta-3); }
 .dlg .rodape { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .dlg .msg { color: var(--alerta); font-size: 13px; min-height: 18px; }
+.dlg .opcao:has(input[type="radio"], input[type="checkbox"]) { align-items: flex-start; }
+.dlg .opcao input[type="radio"], .dlg .opcao input[type="checkbox"] { margin-top: 4px; }
+.dlg .obs { font-size: 12px; color: var(--tinta-3); }
+/* janela de publicar: opções da postagem direta no TikTok */
+.tt-direto { display: grid; gap: 8px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--borda); }
+.tt-campo { display: grid; gap: 4px; font-size: 14px; color: var(--tinta-2); }
+.tt-direto p { margin: 0; }
+.obs { font-size: 12px; color: var(--tinta-3); }
 
 /* ---------------------------------------------------------------- enquadramento */
 

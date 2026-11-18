@@ -90,10 +90,19 @@ def proximo_horario(conta: dict, itens: list[dict], cfg: dict, depois: datetime 
     raise RuntimeError("não há horário livre nos próximos 120 dias")
 
 
+def _privacidade(plataforma: str, privacidade: str | None, opcoes: dict, cfg: dict) -> str | None:
+    if plataforma == "youtube":
+        return privacidade or cfg["publicacao"].get("youtube", {}).get("privacidade", "public")
+    if plataforma == "tiktok":
+        return opcoes.get("privacidade") if opcoes.get("modo") == "direto" else "rascunho"
+    return None
+
+
 def agendar(corte: dict, conta_ids: list[str], modo: str, cfg: dict, data_local: str | None = None,
-            privacidade: str | None = None) -> list[dict]:
-    """Cria um item na fila para cada conta. `corte` traz id, arquivo, titulo, descricao, hashtags, credito.
-    modo: "proximo" (próximo horário livre), "agora" ou "data" (data_local = 'AAAA-MM-DDTHH:MM' no fuso do config)."""
+            privacidade: str | None = None, opcoes: dict | None = None) -> list[dict]:
+    """Cria um item na fila para cada conta. `corte` traz id, arquivo, titulo, descricao, hashtags, credito, duracao.
+    modo: "proximo" (próximo horário livre), "agora" ou "data" (data_local = 'AAAA-MM-DDTHH:MM' no fuso do config).
+    privacidade: a do YouTube. opcoes: por plataforma, ex. {"tiktok": {"modo": "direto", "privacidade": ...}}."""
     novos = []
     with _trava:
         itens = listar()
@@ -110,12 +119,14 @@ def agendar(corte: dict, conta_ids: list[str], modo: str, cfg: dict, data_local:
                 quando = datetime.fromisoformat(data_local).replace(tzinfo=fuso).astimezone(timezone.utc)
             else:
                 quando = proximo_horario(conta, itens, cfg)
+            op = (opcoes or {}).get(conta["plataforma"], {})
             item = {
                 "id": uuid.uuid4().hex[:10], "conta_id": cid, "conta_nome": conta["nome"],
                 "plataforma": conta["plataforma"], "corte_id": corte["id"], "arquivo": corte["arquivo"],
                 "titulo": corte["titulo"], "descricao": corte.get("descricao", ""),
                 "hashtags": corte.get("hashtags", []), "credito": corte.get("credito", ""),
-                "privacidade": privacidade or cfg["publicacao"].get(conta["plataforma"], {}).get("privacidade", "public"),
+                "duracao": corte.get("duracao"), "opcoes": op,
+                "privacidade": _privacidade(conta["plataforma"], privacidade, op, cfg),
                 "agendado_para": quando.isoformat(timespec="seconds"), "status": "agendado", "tentativas": 0,
                 "erro": None, "resultado": None, "criado_em": _agora().isoformat(timespec="seconds"),
             }
@@ -158,6 +169,9 @@ def _publicador(plataforma: str):
     if plataforma == "youtube":
         from . import pub_youtube
         return pub_youtube.publicar
+    if plataforma == "tiktok":
+        from . import pub_tiktok
+        return pub_tiktok.publicar
     if plataforma == "simulacao":
         from . import pub_simulacao
         return pub_simulacao.publicar
